@@ -14,23 +14,31 @@ TELEGRAM_TOKEN   = os.getenv("TELEGRAM_TOKEN", "")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "713501457")
 
 # ──────────────────────────────────────────
-# STRATEGY: Bollinger Band + Breakout Filter
+# PERSONA (Trading Character)
 # ──────────────────────────────────────────
-TRADING_PAIR     = os.getenv("TRADING_PAIR", "BTC")   # BTC, ETH, SOL, dll
-TIMEFRAME        = os.getenv("TIMEFRAME", "1h")        # 1m, 5m, 15m, 1h, 4h
-BB_PERIOD        = int(os.getenv("BB_PERIOD", "20"))
-BB_STD           = float(os.getenv("BB_STD", "2.0"))
-ADX_THRESHOLD    = float(os.getenv("ADX_THRESHOLD", "25"))   # > nilai ini = trending, skip
-VOLUME_SPIKE_X   = float(os.getenv("VOLUME_SPIKE_X", "2.0")) # volume > 2x normal = skip
+# Pilihan: warren_buffett, paul_tudor_jones, ray_dalio, george_soros,
+#          michael_burry, bill_ackman, li_ka_shing, naruto, tom_lee, custom
+ACTIVE_PERSONA   = os.getenv("ACTIVE_PERSONA", "warren_buffett")
+
+# ──────────────────────────────────────────
+# STRATEGY
+# ──────────────────────────────────────────
+TRADING_PAIR     = os.getenv("TRADING_PAIR", "BTC")
+TIMEFRAME        = os.getenv("TIMEFRAME", "1h")
+# Nilai BB & ADX diambil dari persona, tapi bisa di-override via env
+BB_PERIOD        = int(os.getenv("BB_PERIOD", "0")) or None
+BB_STD           = float(os.getenv("BB_STD", "0")) or None
+ADX_THRESHOLD    = float(os.getenv("ADX_THRESHOLD", "0")) or None
+VOLUME_SPIKE_X   = float(os.getenv("VOLUME_SPIKE_X", "0")) or None
 
 # ──────────────────────────────────────────
 # RISK MANAGEMENT
 # ──────────────────────────────────────────
-TRADE_SIZE_USDC  = float(os.getenv("TRADE_SIZE_USDC", "50"))   # per trade
-LEVERAGE         = int(os.getenv("LEVERAGE", "5"))
-TAKE_PROFIT_PCT  = float(os.getenv("TAKE_PROFIT_PCT", "2.0"))  # %
-STOP_LOSS_PCT    = float(os.getenv("STOP_LOSS_PCT", "1.0"))    # %
-MAX_DAILY_LOSS   = float(os.getenv("MAX_DAILY_LOSS", "50"))    # USDC, bot berhenti kalau melebihi
+TRADE_SIZE_USDC  = float(os.getenv("TRADE_SIZE_USDC", "50"))
+LEVERAGE         = int(os.getenv("LEVERAGE", "0")) or None   # None = pakai dari persona
+TAKE_PROFIT_PCT  = float(os.getenv("TAKE_PROFIT_PCT", "0")) or None
+STOP_LOSS_PCT    = float(os.getenv("STOP_LOSS_PCT", "0")) or None
+MAX_DAILY_LOSS   = float(os.getenv("MAX_DAILY_LOSS", "50"))
 
 # ──────────────────────────────────────────
 # DASHBOARD

@@ -10,6 +10,8 @@ import os, sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 import config
 from database.models import Trade, BotState, LearningLog, get_db, init_db
+from strategy.personas import list_personas, get_persona
+import json
 
 app = FastAPI(title="SumbuBotol Trading Dashboard")
 
@@ -91,6 +93,7 @@ async def dashboard(request: Request, db: AsyncSession = Depends(get_db)):
         "recent_trades":  recent_trades,
         "stats":          stats,
         "bot_running":    bot_running,
+        "active_persona": get_persona(config.ACTIVE_PERSONA),
         "config":         config,
         "now":            datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%M UTC"),
     })
@@ -102,6 +105,21 @@ async def history_page(request: Request, db: AsyncSession = Depends(get_db)):
         return RedirectResponse("/login")
     trades = await _get_recent_trades(db, limit=100)
     return templates.TemplateResponse("history.html", {"request": request, "trades": trades})
+
+
+@app.get("/personas", response_class=HTMLResponse)
+async def personas_page(request: Request):
+    if not check_auth(request):
+        return RedirectResponse("/login")
+    personas       = list_personas()
+    active_persona = get_persona(config.ACTIVE_PERSONA)
+    persona_names  = {p["id"]: p["name"] for p in personas}
+    return templates.TemplateResponse("personas.html", {
+        "request":          request,
+        "personas":         personas,
+        "active_persona":   active_persona,
+        "persona_names_json": json.dumps(persona_names),
+    })
 
 
 @app.get("/settings", response_class=HTMLResponse)
@@ -128,6 +146,32 @@ async def api_status():
         "open_positions": open_positions,
         "timestamp":      datetime.now(timezone.utc).isoformat(),
     }
+
+
+@app.post("/api/persona/switch")
+async def persona_switch(request: Request):
+    if not check_auth(request):
+        raise HTTPException(status_code=401)
+    data       = await request.json()
+    persona_id = data.get("persona_id")
+    persona    = get_persona(persona_id)
+    if not persona:
+        raise HTTPException(status_code=400, detail="Persona tidak ditemukan")
+
+    # Update config runtime
+    config.ACTIVE_PERSONA = persona_id
+    # Update timeframe dari persona
+    config.TIMEFRAME = persona["timeframe"]
+
+    # Restart bot dengan persona baru
+    if _bot_runner:
+        was_running = _bot_runner.is_running
+        await _bot_runner.stop()
+        _bot_runner.strategy.set_persona(persona_id)
+        if was_running:
+            await _bot_runner.start()
+
+    return {"status": "switched", "persona": persona["name"]}
 
 
 @app.post("/api/bot/start")

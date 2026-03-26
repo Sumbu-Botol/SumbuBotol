@@ -3,7 +3,14 @@
 
 <!-- Status bar -->
 <div class="flex items-center justify-between mb-6">
-  <h2 class="text-xl font-bold">Dashboard</h2>
+  <div>
+    <h2 class="text-xl font-bold">Dashboard</h2>
+    {% if active_persona %}
+    <a href="/personas" class="text-xs hover:underline" style="color: {{ active_persona.color }}">
+      {{ active_persona.emoji }} {{ active_persona.name }} · {{ active_persona.style }}
+    </a>
+    {% endif %}
+  </div>
   <div class="flex items-center gap-3">
     <span class="text-xs text-gray-500">{{ now }}</span>
     {% if bot_running %}
