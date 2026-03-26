@@ -1,7 +1,6 @@
 from fastapi import FastAPI, Request, Depends, HTTPException, Form
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
-from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select, func, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 from itsdangerous import URLSafeTimedSerializer
@@ -29,6 +28,11 @@ def set_bot_runner(runner):
 @app.on_event("startup")
 async def startup():
     await init_db()
+
+
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
 
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
@@ -111,9 +115,13 @@ async def settings_page(request: Request):
 
 @app.get("/api/status")
 async def api_status():
-    balance        = await _get_balance()
-    open_positions = await _get_open_positions()
-    bot_running    = _bot_runner.is_running if _bot_runner else False
+    try:
+        balance        = await _get_balance()
+        open_positions = await _get_open_positions()
+    except Exception:
+        balance        = 0.0
+        open_positions = []
+    bot_running = _bot_runner.is_running if _bot_runner else False
     return {
         "bot_running":    bot_running,
         "balance":        balance,
