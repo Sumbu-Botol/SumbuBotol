@@ -1,0 +1,175 @@
+{% extends "base.html" %}
+{% block content %}
+
+<!-- Status bar -->
+<div class="flex items-center justify-between mb-6">
+  <h2 class="text-xl font-bold">Dashboard</h2>
+  <div class="flex items-center gap-3">
+    <span class="text-xs text-gray-500">{{ now }}</span>
+    {% if bot_running %}
+      <span class="bg-green-500 text-black text-xs font-bold px-3 py-1 rounded-full">🟢 BOT RUNNING</span>
+      <button onclick="botAction('stop')"
+              class="bg-red-600 hover:bg-red-500 text-white text-xs px-3 py-1 rounded-lg">Stop Bot</button>
+    {% else %}
+      <span class="bg-gray-700 text-gray-300 text-xs font-bold px-3 py-1 rounded-full">⚫ BOT STOPPED</span>
+      <button onclick="botAction('start')"
+              class="bg-green-600 hover:bg-green-500 text-white text-xs px-3 py-1 rounded-lg">Start Bot</button>
+    {% endif %}
+    <button onclick="botAction('close-all')"
+            class="bg-orange-600 hover:bg-orange-500 text-white text-xs px-3 py-1 rounded-lg">Close All</button>
+  </div>
+</div>
+
+<!-- Stats cards -->
+<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+  <div class="bg-gray-900 border border-gray-800 rounded-xl p-4">
+    <p class="text-gray-500 text-xs">Balance</p>
+    <p class="text-2xl font-bold text-yellow-400">${{ "%.2f"|format(balance) }}</p>
+    <p class="text-xs text-gray-500">USDC</p>
+  </div>
+  <div class="bg-gray-900 border border-gray-800 rounded-xl p-4">
+    <p class="text-gray-500 text-xs">P&L Hari Ini</p>
+    <p class="text-2xl font-bold {% if stats.daily_pnl >= 0 %}text-green-400{% else %}text-red-400{% endif %}">
+      {% if stats.daily_pnl >= 0 %}+{% endif %}${{ "%.2f"|format(stats.daily_pnl) }}
+    </p>
+    <p class="text-xs text-gray-500">USDC</p>
+  </div>
+  <div class="bg-gray-900 border border-gray-800 rounded-xl p-4">
+    <p class="text-gray-500 text-xs">Total P&L</p>
+    <p class="text-2xl font-bold {% if stats.total_pnl >= 0 %}text-green-400{% else %}text-red-400{% endif %}">
+      {% if stats.total_pnl >= 0 %}+{% endif %}${{ "%.2f"|format(stats.total_pnl) }}
+    </p>
+    <p class="text-xs text-gray-500">USDC</p>
+  </div>
+  <div class="bg-gray-900 border border-gray-800 rounded-xl p-4">
+    <p class="text-gray-500 text-xs">Win Rate</p>
+    <p class="text-2xl font-bold text-blue-400">{{ stats.win_rate }}%</p>
+    <p class="text-xs text-gray-500">{{ stats.win_trades }}W / {{ stats.loss_trades }}L</p>
+  </div>
+</div>
+
+<!-- P&L Chart -->
+<div class="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-6">
+  <h3 class="text-sm font-bold text-gray-400 mb-3">Cumulative P&L</h3>
+  <canvas id="pnlChart" height="80"></canvas>
+</div>
+
+<!-- Open positions -->
+<div class="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-6">
+  <h3 class="text-sm font-bold text-gray-400 mb-3">Posisi Terbuka</h3>
+  {% if open_positions %}
+  <table class="w-full text-sm">
+    <thead><tr class="text-gray-500 text-xs">
+      <th class="text-left py-1">Coin</th>
+      <th class="text-left py-1">Side</th>
+      <th class="text-right py-1">Entry</th>
+      <th class="text-right py-1">Size</th>
+      <th class="text-right py-1">Unreal. P&L</th>
+    </tr></thead>
+    <tbody>
+    {% for pos in open_positions %}
+    <tr class="border-t border-gray-800">
+      <td class="py-2 font-bold">{{ pos.coin }}</td>
+      <td class="py-2 {% if pos.side == 'LONG' %}text-green-400{% else %}text-red-400{% endif %}">{{ pos.side }}</td>
+      <td class="py-2 text-right">${{ "%.4f"|format(pos.entry_price) }}</td>
+      <td class="py-2 text-right">{{ "%.4f"|format(pos.size) }}</td>
+      <td class="py-2 text-right {% if pos.unrealized_pnl >= 0 %}text-green-400{% else %}text-red-400{% endif %}">
+        {% if pos.unrealized_pnl >= 0 %}+{% endif %}${{ "%.2f"|format(pos.unrealized_pnl) }}
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="text-gray-600 text-sm">Tidak ada posisi terbuka</p>
+  {% endif %}
+</div>
+
+<!-- Recent trades -->
+<div class="bg-gray-900 border border-gray-800 rounded-xl p-4">
+  <div class="flex justify-between items-center mb-3">
+    <h3 class="text-sm font-bold text-gray-400">Trade Terakhir</h3>
+    <a href="/history" class="text-xs text-yellow-400 hover:underline">Lihat semua →</a>
+  </div>
+  <table class="w-full text-xs">
+    <thead><tr class="text-gray-500">
+      <th class="text-left py-1">Pair</th>
+      <th class="text-left py-1">Side</th>
+      <th class="text-right py-1">Entry</th>
+      <th class="text-right py-1">Exit</th>
+      <th class="text-right py-1">P&L</th>
+      <th class="text-right py-1">Status</th>
+    </tr></thead>
+    <tbody>
+    {% for t in recent_trades %}
+    <tr class="border-t border-gray-800">
+      <td class="py-1">{{ t.pair }}</td>
+      <td class="py-1 {% if t.side == 'LONG' %}text-green-400{% else %}text-red-400{% endif %}">{{ t.side }}</td>
+      <td class="py-1 text-right">${{ "%.4f"|format(t.entry_price) }}</td>
+      <td class="py-1 text-right">{% if t.exit_price %}${{ "%.4f"|format(t.exit_price) }}{% else %}-{% endif %}</td>
+      <td class="py-1 text-right {% if t.pnl_usdc and t.pnl_usdc >= 0 %}text-green-400{% elif t.pnl_usdc %}text-red-400{% endif %}">
+        {% if t.pnl_usdc %}{% if t.pnl_usdc >= 0 %}+{% endif %}${{ "%.2f"|format(t.pnl_usdc) }}{% else %}-{% endif %}
+      </td>
+      <td class="py-1 text-right">
+        {% if t.status == 'open' %}<span class="text-yellow-400">OPEN</span>
+        {% elif t.close_reason == 'TP' %}<span class="text-green-400">TP</span>
+        {% elif t.close_reason == 'SL' %}<span class="text-red-400">SL</span>
+        {% else %}<span class="text-gray-400">{{ t.status }}</span>{% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function botAction(action) {
+  if (action === 'close-all' && !confirm('Tutup semua posisi?')) return;
+  await fetch(`/api/bot/${action}`, {method: 'POST'});
+  location.reload();
+}
+
+// P&L Chart
+async function loadChart() {
+  const data = await fetch('/api/pnl-chart').then(r => r.json());
+  if (!data.length) return;
+  const ctx = document.getElementById('pnlChart').getContext('2d');
+  new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: data.map(d => d.time ? new Date(d.time).toLocaleDateString('id') : ''),
+      datasets: [{
+        label: 'Cumulative P&L (USDC)',
+        data: data.map(d => d.pnl),
+        borderColor: '#facc15',
+        backgroundColor: 'rgba(250,204,21,0.08)',
+        fill: true,
+        tension: 0.3,
+        pointRadius: 2,
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { labels: { color: '#9ca3af' } } },
+      scales: {
+        x: { ticks: { color: '#6b7280' }, grid: { color: '#1f2937' } },
+        y: { ticks: { color: '#6b7280' }, grid: { color: '#1f2937' } }
+      }
+    }
+  });
+}
+loadChart();
+
+// Auto-refresh status tiap 30 detik
+setInterval(async () => {
+  const s = await fetch('/api/status').then(r => r.json());
+  // Update balance
+  document.querySelectorAll('[data-balance]').forEach(el => {
+    el.textContent = `$${s.balance.toFixed(2)}`;
+  });
+}, 30000);
+</script>
+{% endblock %}

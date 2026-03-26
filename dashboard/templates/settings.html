@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block content %}
+<h2 class="text-xl font-bold mb-6">⚙️ Settings</h2>
+<div class="bg-gray-900 border border-gray-800 rounded-xl p-6 max-w-lg">
+  <form id="settingsForm" class="flex flex-col gap-4">
+
+    <div>
+      <label class="text-xs text-gray-500">Trading Pair</label>
+      <input name="TRADING_PAIR" value="{{ config.TRADING_PAIR }}"
+             class="w-full mt-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-yellow-400"/>
+      <p class="text-xs text-gray-600 mt-1">Contoh: BTC, ETH, SOL</p>
+    </div>
+
+    <div>
+      <label class="text-xs text-gray-500">Leverage</label>
+      <input name="LEVERAGE" type="number" min="1" max="50" value="{{ config.LEVERAGE }}"
+             class="w-full mt-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-yellow-400"/>
+    </div>
+
+    <div>
+      <label class="text-xs text-gray-500">Trade Size (USDC per trade)</label>
+      <input name="TRADE_SIZE_USDC" type="number" step="1" value="{{ config.TRADE_SIZE_USDC }}"
+             class="w-full mt-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-yellow-400"/>
+    </div>
+
+    <div class="grid grid-cols-2 gap-3">
+      <div>
+        <label class="text-xs text-gray-500">Take Profit (%)</label>
+        <input name="TAKE_PROFIT_PCT" type="number" step="0.1" value="{{ config.TAKE_PROFIT_PCT }}"
+               class="w-full mt-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-yellow-400"/>
+      </div>
+      <div>
+        <label class="text-xs text-gray-500">Stop Loss (%)</label>
+        <input name="STOP_LOSS_PCT" type="number" step="0.1" value="{{ config.STOP_LOSS_PCT }}"
+               class="w-full mt-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-yellow-400"/>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-2 gap-3">
+      <div>
+        <label class="text-xs text-gray-500">BB Period</label>
+        <input name="BB_PERIOD" type="number" value="{{ config.BB_PERIOD }}"
+               class="w-full mt-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-yellow-400"/>
+      </div>
+      <div>
+        <label class="text-xs text-gray-500">BB Std Dev</label>
+        <input name="BB_STD" type="number" step="0.1" value="{{ config.BB_STD }}"
+               class="w-full mt-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-yellow-400"/>
+      </div>
+    </div>
+
+    <div>
+      <label class="text-xs text-gray-500">ADX Threshold (max untuk ranging market)</label>
+      <input name="ADX_THRESHOLD" type="number" step="1" value="{{ config.ADX_THRESHOLD }}"
+             class="w-full mt-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-yellow-400"/>
+      <p class="text-xs text-gray-600 mt-1">ADX &lt; nilai ini = ranging = bot aktif</p>
+    </div>
+
+    <button type="submit"
+            class="bg-yellow-400 text-gray-950 font-bold rounded-lg py-2 hover:bg-yellow-300 mt-2">
+      💾 Simpan & Terapkan
+    </button>
+  </form>
+  <p id="saveMsg" class="text-green-400 text-sm mt-3 hidden">✅ Settings berhasil disimpan</p>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.getElementById('settingsForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const fd   = new FormData(e.target);
+  const data = {};
+  fd.forEach((v, k) => data[k] = isNaN(v) ? v : Number(v));
+  await fetch('/api/settings', {method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(data)});
+  document.getElementById('saveMsg').classList.remove('hidden');
+  setTimeout(() => document.getElementById('saveMsg').classList.add('hidden'), 3000);
+});
+</script>
+{% endblock %}

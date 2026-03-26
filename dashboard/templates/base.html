@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>SumbuBotol Trading</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="bg-gray-950 text-gray-100 min-h-screen font-mono">
+
+  <!-- Navbar -->
+  <nav class="bg-gray-900 border-b border-gray-800 px-6 py-3 flex items-center justify-between">
+    <span class="text-yellow-400 font-bold text-lg">🤖 SumbuBotol Trading</span>
+    <div class="flex gap-4 text-sm">
+      <a href="/"        class="hover:text-yellow-400">Dashboard</a>
+      <a href="/history" class="hover:text-yellow-400">History</a>
+      <a href="/settings" class="hover:text-yellow-400">Settings</a>
+      <a href="/logout"  class="text-red-400 hover:text-red-300">Logout</a>
+    </div>
+  </nav>
+
+  <main class="p-6">
+    {% block content %}{% endblock %}
+  </main>
+
+  {% block scripts %}{% endblock %}
+</body>
+</html>

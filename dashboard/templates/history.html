@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block content %}
+<h2 class="text-xl font-bold mb-6">History Trade</h2>
+<div class="bg-gray-900 border border-gray-800 rounded-xl p-4 overflow-x-auto">
+  <table class="w-full text-xs">
+    <thead><tr class="text-gray-500 border-b border-gray-800">
+      <th class="text-left py-2">Waktu</th>
+      <th class="text-left py-2">Pair</th>
+      <th class="text-left py-2">Side</th>
+      <th class="text-right py-2">Entry</th>
+      <th class="text-right py-2">Exit</th>
+      <th class="text-right py-2">P&L</th>
+      <th class="text-right py-2">Close</th>
+      <th class="text-left py-2">Kondisi</th>
+    </tr></thead>
+    <tbody>
+    {% for t in trades %}
+    <tr class="border-t border-gray-800 hover:bg-gray-800">
+      <td class="py-2 text-gray-500">{{ t.opened_at.strftime('%d/%m %H:%M') if t.opened_at else '-' }}</td>
+      <td class="py-2 font-bold">{{ t.pair }}</td>
+      <td class="py-2 {% if t.side == 'LONG' %}text-green-400{% else %}text-red-400{% endif %}">{{ t.side }}</td>
+      <td class="py-2 text-right">${{ "%.4f"|format(t.entry_price) }}</td>
+      <td class="py-2 text-right">{% if t.exit_price %}${{ "%.4f"|format(t.exit_price) }}{% else %}<span class="text-yellow-400">OPEN</span>{% endif %}</td>
+      <td class="py-2 text-right font-bold {% if t.pnl_usdc and t.pnl_usdc >= 0 %}text-green-400{% elif t.pnl_usdc %}text-red-400{% endif %}">
+        {% if t.pnl_usdc %}{% if t.pnl_usdc >= 0 %}+{% endif %}${{ "%.2f"|format(t.pnl_usdc) }}{% else %}-{% endif %}
+      </td>
+      <td class="py-2 text-right">
+        {% if t.close_reason == 'TP' %}<span class="text-green-400">TP ✅</span>
+        {% elif t.close_reason == 'SL' %}<span class="text-red-400">SL ❌</span>
+        {% elif t.close_reason %}<span class="text-gray-400">{{ t.close_reason }}</span>
+        {% else %}-{% endif %}
+      </td>
+      <td class="py-2 text-gray-500">{{ t.market_condition or '-' }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
