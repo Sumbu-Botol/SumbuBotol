@@ -126,6 +126,66 @@ class BybitClient:
             })
         return positions
 
+    # ── Closed PnL History (semua halaman) ───────────────────────────────────
+
+    async def get_closed_pnl_all(self) -> dict:
+        """
+        Fetch semua closed PnL sejak awal trading (USDT + USDC perpetual).
+        Paginasi otomatis sampai habis.
+        Return: {total_profit, total_loss, net_pnl, trade_count, earliest_ms, latest_ms}
+        """
+        total_profit = 0.0
+        total_loss   = 0.0
+        trade_count  = 0
+        earliest_ms  = None
+        latest_ms    = None
+        cursor       = ""
+
+        while True:
+            ts  = str(int(time.time() * 1000))
+            qs  = "category=linear&limit=100"
+            if cursor:
+                qs += f"&cursor={cursor}"
+            sig = _sign(config.BYBIT_API_SECRET, ts, qs)
+            async with _client() as client:
+                r = await client.get(
+                    f"{_base_url()}/v5/position/closed-pnl?{qs}",
+                    headers=_headers(ts, sig),
+                )
+            if not r.is_success:
+                raise RuntimeError(f"HTTP {r.status_code}")
+            data = r.json()
+            if data.get("retCode") != 0:
+                raise RuntimeError(f"Bybit {data.get('retCode')}: {data.get('retMsg')}")
+
+            items = data["result"].get("list", [])
+            for item in items:
+                pnl = float(item.get("closedPnl", 0))
+                ts_ms = int(item.get("createdTime", 0))
+                if pnl > 0:
+                    total_profit += pnl
+                else:
+                    total_loss   += pnl
+                trade_count += 1
+                if ts_ms:
+                    if earliest_ms is None or ts_ms < earliest_ms:
+                        earliest_ms = ts_ms
+                    if latest_ms is None or ts_ms > latest_ms:
+                        latest_ms = ts_ms
+
+            cursor = data["result"].get("nextPageCursor", "")
+            if not cursor or not items:
+                break  # sudah habis semua halaman
+
+        return {
+            "total_profit": round(total_profit, 4),
+            "total_loss":   round(total_loss, 4),
+            "net_pnl":      round(total_profit + total_loss, 4),
+            "trade_count":  trade_count,
+            "earliest_ms":  earliest_ms,
+            "latest_ms":    latest_ms,
+        }
+
     # ── Orders ────────────────────────────────────────────────────────────────
 
     async def place_order(

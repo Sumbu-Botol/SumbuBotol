@@ -79,6 +79,25 @@
   <canvas id="pnlChart" height="80"></canvas>
 </div>
 
+<!-- Bybit PnL Summary (3 kolom) -->
+<div class="grid grid-cols-3 gap-4 mb-4" id="bybitPnlSummary">
+  <div class="bg-gray-900 border border-gray-800 rounded-xl p-4">
+    <p class="text-xs text-gray-500 mb-1">Total Profit Futures</p>
+    <p class="text-2xl font-bold text-green-400" id="pnlProfit">—</p>
+    <p class="text-xs text-gray-600 mt-1" id="pnlSince">Memuat...</p>
+  </div>
+  <div class="bg-gray-900 border border-gray-800 rounded-xl p-4">
+    <p class="text-xs text-gray-500 mb-1">Total Rugi Futures</p>
+    <p class="text-2xl font-bold text-red-400" id="pnlLoss">—</p>
+    <p class="text-xs text-gray-600 mt-1" id="pnlTrades">— trades</p>
+  </div>
+  <div class="bg-gray-900 border border-gray-800 rounded-xl p-4">
+    <p class="text-xs text-gray-500 mb-1">Delta Akumulasi</p>
+    <p class="text-2xl font-bold" id="pnlNet">—</p>
+    <p class="text-xs text-gray-600 mt-1">USDT + USDC</p>
+  </div>
+</div>
+
 <!-- Bybit Live Positions (monitor + control) -->
 <div class="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-6" id="bybitPanel">
   <div class="flex items-center justify-between mb-3">
@@ -364,6 +383,31 @@ async function submitTpSl() {
 // Auto-refresh posisi Bybit setiap 5 detik
 loadBybit();
 setInterval(loadBybit, 5000);
+
+// ── Bybit PnL Summary (total profit/rugi sejak awal) ──────────────────────
+async function loadPnlSummary() {
+  try {
+    const d = await fetch('/api/bybit/pnl-summary', {credentials: 'same-origin'}).then(r => r.json());
+    if (d.error) { console.warn('[PnL]', d.error); return; }
+
+    const fmt = (v) => (v >= 0 ? '+' : '') + v.toFixed(2);
+    document.getElementById('pnlProfit').textContent = '+$' + d.total_profit.toFixed(2);
+    document.getElementById('pnlLoss').textContent   = '$' + d.total_loss.toFixed(2);
+    const net = document.getElementById('pnlNet');
+    net.textContent  = fmt(d.net_pnl) + ' USDT';
+    net.className    = 'text-2xl font-bold ' + (d.net_pnl >= 0 ? 'text-green-400' : 'text-red-400');
+    document.getElementById('pnlTrades').textContent = d.trade_count + ' trades ditutup';
+
+    if (d.earliest_ms) {
+      const since = new Date(d.earliest_ms);
+      const opts  = {year:'numeric', month:'long', day:'numeric'};
+      document.getElementById('pnlSince').textContent = 'Sejak ' + since.toLocaleDateString('id-ID', opts);
+    }
+  } catch(e) {
+    console.error('[PnL] error:', e);
+  }
+}
+loadPnlSummary();
 
 // P&L Chart
 async function loadChart() {
