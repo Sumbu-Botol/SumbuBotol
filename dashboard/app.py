@@ -105,15 +105,16 @@ async def dashboard(request: Request, db: AsyncSession = Depends(get_db)):
     bot_running    = _bot_runner.is_running if _bot_runner else False
 
     return templates.TemplateResponse("dashboard.html", {
-        "request":        request,
-        "balance":        balance,
-        "open_positions": open_positions,
-        "recent_trades":  recent_trades,
-        "stats":          stats,
-        "bot_running":    bot_running,
-        "active_persona": get_persona(config.ACTIVE_PERSONA),
-        "config":         config,
-        "now":            datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%M UTC"),
+        "request":         request,
+        "balance":         balance,
+        "open_positions":  open_positions,
+        "recent_trades":   recent_trades,
+        "stats":           stats,
+        "bot_running":     bot_running,
+        "active_persona":  get_persona(config.ACTIVE_PERSONA),
+        "active_exchange": config.ACTIVE_EXCHANGE,
+        "config":          config,
+        "now":             datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%M UTC"),
     })
 
 
@@ -251,6 +252,72 @@ async def pnl_chart(db: AsyncSession = Depends(get_db)):
         })
     return cumulative
 
+
+# ── Bybit API routes ─────────────────────────────────────────────────────────
+
+def _bybit():
+    from exchanges.bybit import BybitClient
+    return BybitClient()
+
+@app.get("/api/bybit/balance")
+async def bybit_balance(request: Request):
+    if not check_auth(request):
+        raise HTTPException(status_code=401)
+    return await _bybit().get_balance()
+
+@app.get("/api/bybit/positions")
+async def bybit_positions(request: Request, settle: str = "ALL"):
+    if not check_auth(request):
+        raise HTTPException(status_code=401)
+    return await _bybit().get_positions(settle)
+
+@app.post("/api/bybit/close")
+async def bybit_close(request: Request):
+    if not check_auth(request):
+        raise HTTPException(status_code=401)
+    d = await request.json()
+    return await _bybit().close_position(d["symbol"], d["side"], float(d["size"]))
+
+@app.post("/api/bybit/close-all")
+async def bybit_close_all(request: Request):
+    if not check_auth(request):
+        raise HTTPException(status_code=401)
+    return await _bybit().close_all_positions()
+
+@app.post("/api/bybit/tp-sl")
+async def bybit_tp_sl(request: Request):
+    if not check_auth(request):
+        raise HTTPException(status_code=401)
+    d = await request.json()
+    return await _bybit().set_tp_sl(
+        d["symbol"],
+        tp=float(d.get("tp", 0)) or None,
+        sl=float(d.get("sl", 0)) or None,
+    )
+
+@app.post("/api/bybit/order")
+async def bybit_order(request: Request):
+    if not check_auth(request):
+        raise HTTPException(status_code=401)
+    d = await request.json()
+    return await _bybit().place_order(
+        symbol=d["symbol"], side=d["side"], qty=float(d["qty"]),
+        order_type=d.get("type", "Market"),
+        price=float(d["price"]) if d.get("price") else None,
+        tp=float(d["tp"]) if d.get("tp") else None,
+        sl=float(d["sl"]) if d.get("sl") else None,
+    )
+
+@app.post("/api/exchange/switch")
+async def exchange_switch(request: Request):
+    if not check_auth(request):
+        raise HTTPException(status_code=401)
+    d = await request.json()
+    ex = d.get("exchange", "bybit")
+    if ex not in ("bybit", "hyperliquid"):
+        raise HTTPException(status_code=400, detail="Invalid exchange")
+    config.ACTIVE_EXCHANGE = ex
+    return {"active_exchange": ex}
 
 # ── News routes ──────────────────────────────────────────────────────────────
 

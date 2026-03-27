@@ -1,6 +1,18 @@
 import os
 
 # ──────────────────────────────────────────
+# ACTIVE EXCHANGE  (bybit | hyperliquid)
+# ──────────────────────────────────────────
+ACTIVE_EXCHANGE  = os.getenv("ACTIVE_EXCHANGE", "bybit")
+
+# ──────────────────────────────────────────
+# BYBIT
+# ──────────────────────────────────────────
+BYBIT_API_KEY    = os.getenv("BYBIT_API_KEY", "")
+BYBIT_API_SECRET = os.getenv("BYBIT_API_SECRET", "")
+BYBIT_MAINNET    = True   # selalu mainnet
+
+# ──────────────────────────────────────────
 # HYPERLIQUID
 # ──────────────────────────────────────────
 HL_WALLET_ADDRESS = os.getenv("HL_WALLET_ADDRESS", "")
