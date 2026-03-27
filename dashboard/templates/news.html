@@ -1,0 +1,196 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="flex items-center justify-between mb-4">
+  <div>
+    <h2 class="text-xl font-bold">📰 Berita Real-time</h2>
+    <p class="text-xs text-gray-500 mt-1">Live dari RSS feed · auto-update tiap artikel baru masuk</p>
+  </div>
+  <div class="flex items-center gap-2">
+    <span id="wsStatus" class="text-xs px-2 py-1 rounded-full bg-gray-800 text-gray-500">⚫ Connecting...</span>
+    <span id="articleCount" class="text-xs text-gray-500"></span>
+  </div>
+</div>
+
+<!-- Tabs -->
+<div class="flex gap-2 mb-4">
+  <button onclick="switchTab('all')"   id="tab-all"    class="tab-btn active-tab px-4 py-2 rounded-lg text-sm font-bold">🔥 Terbaru</button>
+  <button onclick="switchTab('crypto')" id="tab-crypto" class="tab-btn px-4 py-2 rounded-lg text-sm font-bold">₿ Kripto</button>
+  <button onclick="switchTab('global')" id="tab-global" class="tab-btn px-4 py-2 rounded-lg text-sm font-bold">🌍 Global</button>
+</div>
+
+<!-- New article notification bar -->
+<div id="newBar" class="hidden bg-yellow-400 text-black text-xs font-bold px-4 py-2 rounded-lg mb-4 cursor-pointer flex items-center gap-2"
+     onclick="scrollToTop()">
+  <span>🔔</span>
+  <span id="newBarText">Artikel baru masuk!</span>
+  <span class="ml-auto">↑ Lihat</span>
+</div>
+
+<!-- Article feed -->
+<div id="articleFeed" class="flex flex-col gap-3">
+  <div class="text-center text-gray-600 py-10 text-sm" id="loadingMsg">⏳ Memuat berita...</div>
+</div>
+
+<style>
+.tab-btn { background: #1f2937; color: #9ca3af; transition: all 0.2s; }
+.tab-btn:hover { background: #374151; color: #fff; }
+.active-tab { background: #374151; color: #facc15; }
+.article-card { animation: slideIn 0.3s ease; }
+@keyframes slideIn { from { opacity:0; transform:translateY(-8px); } to { opacity:1; transform:translateY(0); } }
+.source-badge { font-size:10px; padding:2px 6px; border-radius:9999px; background:#1f2937; }
+.new-badge { font-size:10px; padding:2px 6px; border-radius:9999px; background:#fbbf24; color:#000; font-weight:bold; }
+</style>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+let allArticles   = [];
+let cryptoArticles = [];
+let globalArticles = [];
+let activeTab     = 'all';
+let newCount      = 0;
+let ws;
+
+// ── WebSocket ──────────────────────────────────────────────────────────────
+function connectWS() {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  ws = new WebSocket(`${proto}://${location.host}/ws/news`);
+
+  ws.onopen = () => {
+    document.getElementById('wsStatus').textContent = '🟢 Live';
+    document.getElementById('wsStatus').className = 'text-xs px-2 py-1 rounded-full bg-green-900 text-green-400';
+  };
+
+  ws.onmessage = (e) => {
+    const msg = JSON.parse(e.data);
+    if (msg.type === 'init') {
+      // Initial load
+      msg.data.forEach(a => addArticle(a, false));
+      renderFeed();
+      updateCount();
+    } else if (msg.type === 'news') {
+      // Artikel baru masuk
+      addArticle(msg.data, true);
+      if (window.scrollY > 200) showNewBar();
+      else renderFeed();
+      updateCount();
+    }
+  };
+
+  ws.onclose = () => {
+    document.getElementById('wsStatus').textContent = '🔴 Disconnected';
+    document.getElementById('wsStatus').className = 'text-xs px-2 py-1 rounded-full bg-red-900 text-red-400';
+    // Auto-reconnect setelah 3 detik
+    setTimeout(connectWS, 3000);
+  };
+
+  ws.onerror = () => ws.close();
+}
+
+// Keep-alive ping setiap 30 detik
+setInterval(() => { if (ws && ws.readyState === 1) ws.send('ping'); }, 30000);
+
+// ── Article management ─────────────────────────────────────────────────────
+function addArticle(a, isNew) {
+  a.isNew = isNew;
+  if (a.category === 'crypto') {
+    cryptoArticles = cryptoArticles.filter(x => x.id !== a.id);
+    cryptoArticles.unshift(a);
+  } else {
+    globalArticles = globalArticles.filter(x => x.id !== a.id);
+    globalArticles.unshift(a);
+  }
+  allArticles = allArticles.filter(x => x.id !== a.id);
+  allArticles.unshift(a);
+  if (isNew) newCount++;
+}
+
+function getArticles() {
+  if (activeTab === 'crypto') return cryptoArticles;
+  if (activeTab === 'global') return globalArticles;
+  return allArticles;
+}
+
+function renderFeed() {
+  const articles = getArticles();
+  document.getElementById('loadingMsg')?.remove();
+  const feed = document.getElementById('articleFeed');
+
+  if (!articles.length) {
+    feed.innerHTML = '<p class="text-center text-gray-600 py-10 text-sm">Belum ada berita...</p>';
+    return;
+  }
+
+  feed.innerHTML = articles.slice(0, 100).map(a => articleHTML(a)).join('');
+  // Reset new badge setelah render
+  articles.forEach(a => a.isNew = false);
+  newCount = 0;
+  hideNewBar();
+}
+
+function articleHTML(a) {
+  const time = a.published ? timeAgo(a.published) : '';
+  const catEmoji = a.category === 'crypto' ? '₿' : '🌍';
+  const newBadge = a.isNew ? '<span class="new-badge ml-1">NEW</span>' : '';
+  return `
+  <div class="article-card bg-gray-900 border border-gray-800 hover:border-gray-600 rounded-xl p-4 transition-all">
+    <div class="flex items-start gap-3">
+      <span class="text-lg mt-0.5">${catEmoji}</span>
+      <div class="flex-1 min-w-0">
+        <div class="flex items-center gap-2 mb-1 flex-wrap">
+          <span class="source-badge text-gray-400">${a.source}</span>
+          <span class="text-gray-600 text-xs">${time}</span>
+          ${newBadge}
+        </div>
+        <a href="${a.url}" target="_blank" rel="noopener"
+           class="text-white font-semibold text-sm hover:text-yellow-400 leading-snug block mb-1">
+          ${a.title}
+        </a>
+        ${a.summary ? `<p class="text-gray-500 text-xs leading-relaxed line-clamp-2">${a.summary}</p>` : ''}
+      </div>
+    </div>
+  </div>`;
+}
+
+// ── UI helpers ─────────────────────────────────────────────────────────────
+function switchTab(tab) {
+  activeTab = tab;
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active-tab'));
+  document.getElementById(`tab-${tab}`).classList.add('active-tab');
+  renderFeed();
+}
+
+function showNewBar() {
+  const bar = document.getElementById('newBar');
+  document.getElementById('newBarText').textContent = `${newCount} artikel baru masuk!`;
+  bar.classList.remove('hidden');
+}
+
+function hideNewBar() {
+  document.getElementById('newBar').classList.add('hidden');
+}
+
+function scrollToTop() {
+  window.scrollTo({top: 0, behavior: 'smooth'});
+  renderFeed();
+}
+
+function updateCount() {
+  const articles = getArticles();
+  document.getElementById('articleCount').textContent = `${articles.length} artikel`;
+}
+
+function timeAgo(isoStr) {
+  const diff = (Date.now() - new Date(isoStr).getTime()) / 1000;
+  if (diff < 60)   return `${Math.round(diff)}d lalu`;
+  if (diff < 3600) return `${Math.round(diff/60)}m lalu`;
+  if (diff < 86400) return `${Math.round(diff/3600)}j lalu`;
+  return `${Math.round(diff/86400)}h lalu`;
+}
+
+// ── Init ────────────────────────────────────────────────────────────────────
+connectWS();
+</script>
+{% endblock %}

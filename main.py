@@ -18,7 +18,8 @@ from strategy.bollinger import BollingerStrategy
 from risk.manager import RiskManager
 from notifications.telegram import TelegramNotifier
 from database.models import Trade, init_db, AsyncSessionLocal
-from dashboard.app import app as dashboard_app, set_bot_runner
+from dashboard.app import app as dashboard_app, set_bot_runner, set_news_fetcher
+from news.fetcher import NewsFetcher
 
 
 class BotRunner:
@@ -241,6 +242,11 @@ async def main():
     else:
         if config.BOT_ENABLED:
             await runner.start()
+
+    # Jalankan news fetcher (poll RSS setiap 60 detik)
+    news_fetcher = NewsFetcher()
+    set_news_fetcher(news_fetcher)
+    asyncio.create_task(news_fetcher.start(interval=60))
 
     # Jalankan daily report scheduler
     asyncio.create_task(daily_report_scheduler(runner))

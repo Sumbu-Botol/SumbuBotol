@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request, Depends, HTTPException, Form
+from fastapi import FastAPI, Request, Depends, HTTPException, Form, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select, func, desc
@@ -11,6 +11,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 import config
 from database.models import Trade, BotState, LearningLog, get_db, init_db
 from strategy.personas import list_personas, get_persona
+from news.fetcher import NewsFetcher
 import json
 
 app = FastAPI(title="SumbuBotol Trading Dashboard")
@@ -19,12 +20,29 @@ BASE_DIR   = os.path.dirname(__file__)
 templates  = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 serializer = URLSafeTimedSerializer(config.DASHBOARD_PASSWORD)
 
-# Global bot runner reference (diset dari main.py)
-_bot_runner = None
+# Global references (diset dari main.py)
+_bot_runner   = None
+_news_fetcher: NewsFetcher = None
+_ws_clients: list[WebSocket] = []
 
 def set_bot_runner(runner):
     global _bot_runner
     _bot_runner = runner
+
+def set_news_fetcher(fetcher: NewsFetcher):
+    global _news_fetcher
+    _news_fetcher = fetcher
+    # Broadcast artikel baru ke semua WS client
+    async def broadcast(article: dict):
+        dead = []
+        for ws in _ws_clients:
+            try:
+                await ws.send_json({"type": "news", "data": article})
+            except Exception:
+                dead.append(ws)
+        for ws in dead:
+            _ws_clients.remove(ws)
+    fetcher.on_new_article(broadcast)
 
 
 @app.on_event("startup")
@@ -232,6 +250,52 @@ async def pnl_chart(db: AsyncSession = Depends(get_db)):
             "pnl":  round(total, 2),
         })
     return cumulative
+
+
+# ── News routes ──────────────────────────────────────────────────────────────
+
+@app.get("/news", response_class=HTMLResponse)
+async def news_page(request: Request):
+    if not check_auth(request):
+        return RedirectResponse("/login")
+    return templates.TemplateResponse("news.html", {"request": request})
+
+
+@app.get("/api/news/crypto")
+async def api_news_crypto(limit: int = 50):
+    if not _news_fetcher:
+        return []
+    return _news_fetcher.get_crypto(limit)
+
+
+@app.get("/api/news/global")
+async def api_news_global(limit: int = 50):
+    if not _news_fetcher:
+        return []
+    return _news_fetcher.get_global(limit)
+
+
+@app.get("/api/news/latest")
+async def api_news_latest(limit: int = 20):
+    if not _news_fetcher:
+        return []
+    return _news_fetcher.get_latest(limit)
+
+
+@app.websocket("/ws/news")
+async def ws_news(websocket: WebSocket):
+    await websocket.accept()
+    _ws_clients.append(websocket)
+    try:
+        # Kirim artikel yang sudah ada saat pertama connect
+        if _news_fetcher:
+            latest = _news_fetcher.get_latest(30)
+            await websocket.send_json({"type": "init", "data": latest})
+        while True:
+            await websocket.receive_text()   # keep alive
+    except WebSocketDisconnect:
+        if websocket in _ws_clients:
+            _ws_clients.remove(websocket)
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
