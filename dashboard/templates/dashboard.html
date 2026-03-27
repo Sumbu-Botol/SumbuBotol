@@ -229,13 +229,14 @@ async function loadBybit() {
     const pos = await posResp.json();
     const bal = await balResp.json();
 
-    // Parse posisi
+    // Parse posisi — kalau ada error field, anggap gagal (null), bukan kosong
     let newPositions = null;
     if (Array.isArray(pos)) {
       newPositions = pos;
-    } else if (Array.isArray(pos.positions)) {
+    } else if (Array.isArray(pos.positions) && !pos.error) {
       newPositions = pos.positions;
     }
+    // pos.error = backend error → newPositions tetap null → data lama tidak disentuh
 
     if (newPositions !== null) {
       if (newPositions.length > 0) {
