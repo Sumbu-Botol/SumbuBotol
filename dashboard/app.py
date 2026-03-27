@@ -301,7 +301,7 @@ async def bybit_test(request: Request):
             "X-BAPI-SIGN": sig, "X-BAPI-RECV-WINDOW": "5000",
         }
         async with httpx.AsyncClient(timeout=15) as client:
-            r = await client.get("https://api.bytick.com/v5/account/wallet-balance?" + qs, headers=headers)
+            r = await client.get(f"{config.BYBIT_BASE_URL.rstrip('/')}/v5/account/wallet-balance?" + qs, headers=headers)
         result["balance_http_status"] = r.status_code
         result["balance_raw_body"]    = r.text[:300]  # max 300 char untuk debug
         try:
@@ -321,7 +321,7 @@ async def bybit_test(request: Request):
             "X-BAPI-SIGN": sig2, "X-BAPI-RECV-WINDOW": "5000",
         }
         async with httpx.AsyncClient(timeout=15) as client:
-            r2 = await client.get("https://api.bytick.com/v5/position/list?" + qs2, headers=headers2)
+            r2 = await client.get(f"{config.BYBIT_BASE_URL.rstrip('/')}/v5/position/list?" + qs2, headers=headers2)
         result["position_http_status"] = r2.status_code
         result["position_raw_body"]    = r2.text[:300]
         try:

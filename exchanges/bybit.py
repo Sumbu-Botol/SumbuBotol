@@ -15,9 +15,8 @@ import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 import config
 
-# api.bytick.com = Bybit alternative endpoint (bypass CloudFront block)
-# Fallback: api.bybit.com
-BASE_URL = "https://api.bytick.com"
+def _base_url() -> str:
+    return config.BYBIT_BASE_URL.rstrip("/")
 RECV_WINDOW = "5000"
 
 
@@ -58,7 +57,7 @@ class BybitClient:
         sig = _sign(config.BYBIT_API_SECRET, ts, qs)
         async with _client() as client:
             r = await client.get(
-                f"{BASE_URL}/v5/account/wallet-balance?{qs}",
+                f"{_base_url()}/v5/account/wallet-balance?{qs}",
                 headers=_headers(ts, sig),
             )
             data = r.json()
@@ -89,7 +88,7 @@ class BybitClient:
         sig = _sign(config.BYBIT_API_SECRET, ts, qs)
         async with _client() as client:
             r = await client.get(
-                f"{BASE_URL}/v5/position/list?{qs}",
+                f"{_base_url()}/v5/position/list?{qs}",
                 headers=_headers(ts, sig),
             )
             data = r.json()
@@ -160,7 +159,7 @@ class BybitClient:
         sig = _sign(config.BYBIT_API_SECRET, ts, payload)
         async with _client() as client:
             r = await client.post(
-                f"{BASE_URL}/v5/order/create",
+                f"{_base_url()}/v5/order/create",
                 headers=_headers(ts, sig),
                 content=payload,
             )
@@ -206,7 +205,7 @@ class BybitClient:
         sig = _sign(config.BYBIT_API_SECRET, ts, payload)
         async with _client() as client:
             r = await client.post(
-                f"{BASE_URL}/v5/position/trading-stop",
+                f"{_base_url()}/v5/position/trading-stop",
                 headers=_headers(ts, sig),
                 content=payload,
             )
@@ -227,7 +226,7 @@ class BybitClient:
         sig = _sign(config.BYBIT_API_SECRET, ts, payload)
         async with _client() as client:
             r = await client.post(
-                f"{BASE_URL}/v5/position/set-leverage",
+                f"{_base_url()}/v5/position/set-leverage",
                 headers=_headers(ts, sig),
                 content=payload,
             )
@@ -245,7 +244,7 @@ class BybitClient:
         sig = _sign(config.BYBIT_API_SECRET, ts, qs)
         async with _client() as client:
             r = await client.get(
-                f"{BASE_URL}/v5/market/kline?{qs}",
+                f"{_base_url()}/v5/market/kline?{qs}",
                 headers=_headers(ts, sig),
             )
             data = r.json()
@@ -264,7 +263,7 @@ class BybitClient:
         sig = _sign(config.BYBIT_API_SECRET, ts, qs)
         async with _client() as client:
             r = await client.get(
-                f"{BASE_URL}/v5/market/tickers?{qs}",
+                f"{_base_url()}/v5/market/tickers?{qs}",
                 headers=_headers(ts, sig),
             )
             data = r.json()
