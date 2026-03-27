@@ -60,11 +60,12 @@ class BybitClient:
                 f"{_base_url()}/v5/account/wallet-balance?{qs}",
                 headers=_headers(ts, sig),
             )
-            data = r.json()
-        result = {"USDT": 0.0, "USDC": 0.0, "total_usd": 0.0}
+        if not r.is_success:
+            raise RuntimeError(f"HTTP {r.status_code}")
+        data = r.json()
         if data.get("retCode") != 0:
-            print(f"[Bybit] get_balance error: {data.get('retMsg')}")
-            return result
+            raise RuntimeError(f"Bybit error {data.get('retCode')}: {data.get('retMsg')}")
+        result = {"USDT": 0.0, "USDC": 0.0, "total_usd": 0.0}
         for acct in data["result"].get("list", []):
             for coin in acct.get("coin", []):
                 if coin["coin"] == "USDT":
@@ -91,11 +92,12 @@ class BybitClient:
                 f"{_base_url()}/v5/position/list?{qs}",
                 headers=_headers(ts, sig),
             )
-            data = r.json()
-        positions = []
+        if not r.is_success:
+            raise RuntimeError(f"HTTP {r.status_code}")
+        data = r.json()
         if data.get("retCode") != 0:
-            print(f"[Bybit] get_positions error: {data.get('retMsg')}")
-            return positions
+            raise RuntimeError(f"Bybit error {data.get('retCode')}: {data.get('retMsg')}")
+        positions = []
         for p in data["result"].get("list", []):
             size = float(p.get("size", 0))
             if size == 0:
