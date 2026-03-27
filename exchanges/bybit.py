@@ -15,7 +15,9 @@ import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 import config
 
-BASE_URL = "https://api.bybit.com"
+# api.bytick.com = Bybit alternative endpoint (bypass CloudFront block)
+# Fallback: api.bybit.com
+BASE_URL = "https://api.bytick.com"
 RECV_WINDOW = "5000"
 
 
