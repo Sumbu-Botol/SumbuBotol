@@ -100,16 +100,13 @@
 
 <!-- Bybit Live Positions (monitor + control) -->
 <div class="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-6" id="bybitPanel">
-  <div class="flex items-center justify-between mb-3">
-    <div class="flex items-center gap-2">
-      <h3 class="text-sm font-bold text-gray-400">Bybit — Posisi Aktif</h3>
-      <span class="text-xs text-gray-600" id="bybitSettle">USDT + USDC</span>
-    </div>
-    <div class="flex items-center gap-2">
-      <span class="text-xs" id="bybitBalanceLabel"></span>
-      <button onclick="loadBybit()" class="text-xs text-yellow-400 hover:underline">↻ Refresh</button>
-    </div>
+  <!-- Row 1: judul + refresh -->
+  <div class="flex items-center justify-between mb-1">
+    <h3 class="text-sm font-bold text-gray-400">Bybit — Posisi Aktif <span class="text-gray-600 font-normal">USDT + USDC</span></h3>
+    <button onclick="loadBybit()" class="text-xs text-yellow-400 hover:underline flex-shrink-0">↻ Refresh</button>
   </div>
+  <!-- Row 2: balance -->
+  <p class="text-xs text-gray-400 mb-3" id="bybitBalanceLabel"></p>
 
   <div id="bybitPositions">
     <p class="text-gray-600 text-sm">Memuat posisi...</p>
