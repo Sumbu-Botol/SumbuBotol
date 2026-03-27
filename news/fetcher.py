@@ -24,16 +24,16 @@ CRYPTO_SOURCES = [
 ]
 
 GLOBAL_SOURCES = [
-    {"name": "CNBC",          "url": "https://www.cnbc.com/id/100003114/device/rss/rss.html",             "lang": "en"},
-    {"name": "CNBC Finance",  "url": "https://www.cnbc.com/id/10000664/device/rss/rss.html",              "lang": "en"},
-    {"name": "Reuters",       "url": "https://feeds.reuters.com/reuters/businessNews",                    "lang": "en"},
-    {"name": "Reuters World", "url": "https://feeds.reuters.com/Reuters/worldNews",                       "lang": "en"},
-    {"name": "MarketWatch",   "url": "https://feeds.marketwatch.com/marketwatch/topstories/",             "lang": "en"},
-    {"name": "BBC Business",  "url": "https://feeds.bbci.co.uk/news/business/rss.xml",                   "lang": "en"},
-    {"name": "WSJ Markets",   "url": "https://feeds.a.dj.com/rss/RSSMarketsMain.xml",                    "lang": "en"},
-    {"name": "WSJ World",     "url": "https://feeds.a.dj.com/rss/RSSWorldNews.xml",                      "lang": "en"},
-    {"name": "Yahoo Finance", "url": "https://finance.yahoo.com/rss/topfinstories",                      "lang": "en"},
-    {"name": "Investing.com", "url": "https://www.investing.com/rss/news_285.rss",                       "lang": "en"},
+    {"name": "Bloomberg Markets",   "url": "https://feeds.bloomberg.com/markets/news.rss",                       "lang": "en"},
+    {"name": "Bloomberg Economics", "url": "https://feeds.bloomberg.com/economics/news.rss",                     "lang": "en"},
+    {"name": "WSJ Markets",         "url": "https://feeds.a.dj.com/rss/RSSMarketsMain.xml",                      "lang": "en"},
+    {"name": "WSJ Business",        "url": "https://feeds.a.dj.com/rss/WSJcomUSBusiness.xml",                    "lang": "en"},
+    {"name": "WSJ World",           "url": "https://feeds.a.dj.com/rss/RSSWorldNews.xml",                        "lang": "en"},
+    {"name": "Financial Times",     "url": "https://www.ft.com/rss/home",                                        "lang": "en"},
+    {"name": "CNBC",                "url": "https://www.cnbc.com/id/100003114/device/rss/rss.html",              "lang": "en"},
+    {"name": "CNBC Finance",        "url": "https://www.cnbc.com/id/10000664/device/rss/rss.html",               "lang": "en"},
+    {"name": "Reuters Finance",     "url": "https://www.reutersagency.com/feed/?best-topics=business-finance",   "lang": "en"},
+    {"name": "Reuters Tech",        "url": "https://www.reutersagency.com/feed/?best-topics=tech",               "lang": "en"},
 ]
 
 HEADERS = {
