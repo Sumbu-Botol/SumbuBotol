@@ -10,7 +10,6 @@ import re
 import hashlib
 from datetime import datetime, timezone
 from typing import Optional
-import xml.etree.ElementTree as ET
 
 # ── RSS Sources ───────────────────────────────────────────────────────────────
 
@@ -35,7 +34,7 @@ GLOBAL_SOURCES = [
 ]
 
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (compatible; SumbuBotol/1.0; +https://sumbubotol.com)"
+    "User-Agent": "Mozilla/5.0 (compatible; NewsBot/1.0)"
 }
 
 
@@ -109,28 +108,47 @@ class NewsFetcher:
             return 0
 
     def _parse_rss(self, xml_text: str, source_name: str, category: str) -> list[dict]:
+        """Regex-based RSS parser — handles CDATA, malformed XML, Bloomberg, FT, etc."""
         articles = []
         try:
-            # Bersihkan namespace agar mudah di-parse
-            xml_clean = re.sub(r' xmlns[^"]*"[^"]*"', '', xml_text)
-            root = ET.fromstring(xml_clean)
-            items = root.findall(".//item")
-            for item in items[:20]:  # max 20 per source per poll
-                title = _get_text(item, "title")
-                link  = _get_text(item, "link") or _get_text(item, "guid")
-                desc  = _clean_html(_get_text(item, "description") or "")
-                pub   = _parse_date(_get_text(item, "pubDate"))
-                if not title or not link:
+            _item   = re.compile(r'<item>([\s\S]*?)</item>')
+            _title  = re.compile(r'<title[^>]*>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?</title>')
+            _link   = re.compile(r'<link[^>]*>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?</link>')
+            _guid   = re.compile(r'<guid[^>]*isPermaLink="true"[^>]*>([\s\S]*?)</guid>')
+            _desc   = re.compile(r'<description[^>]*>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?</description>')
+            _date   = re.compile(r'<pubDate[^>]*>([\s\S]*?)</pubDate>')
+
+            for m in _item.finditer(xml_text):
+                item = m.group(1)
+                tm = _title.search(item)
+                lm = _link.search(item) or _guid.search(item)
+                dm = _desc.search(item)
+                pm = _date.search(item)
+
+                if not tm or not lm:
                     continue
+
+                title = tm.group(1).strip()
+                url   = lm.group(1).strip()
+                if not url.startswith("http"):
+                    continue
+
+                desc = ""
+                if dm:
+                    desc = re.sub(r'<[^>]+>', '', dm.group(1)).strip()[:800]
+
+                pub = _parse_date(pm.group(1).strip() if pm else None)
                 articles.append({
-                    "title":     title.strip(),
-                    "url":       link.strip(),
-                    "summary":   desc[:800] if desc else "",
-                    "source":    source_name,
-                    "category":  category,
-                    "published": pub.isoformat() if pub else datetime.now(timezone.utc).isoformat(),
+                    "title":        title,
+                    "url":          url,
+                    "summary":      desc,
+                    "source":       source_name,
+                    "category":     category,
+                    "published":    pub.isoformat() if pub else datetime.now(timezone.utc).isoformat(),
                     "published_ts": pub.timestamp() if pub else datetime.now(timezone.utc).timestamp(),
                 })
+                if len(articles) >= 20:
+                    break
         except Exception as e:
             print(f"[News] Parse error {source_name}: {e}")
         return articles
@@ -148,22 +166,6 @@ class NewsFetcher:
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
-
-def _get_text(element, tag: str) -> Optional[str]:
-    el = element.find(tag)
-    if el is None:
-        return None
-    if el.text:
-        return el.text
-    # CDATA fallback
-    return "".join(el.itertext()).strip() or None
-
-
-def _clean_html(text: str) -> str:
-    text = re.sub(r'<[^>]+>', '', text)
-    text = re.sub(r'\s+', ' ', text)
-    return text.strip()
-
 
 def _parse_date(date_str: Optional[str]) -> Optional[datetime]:
     if not date_str:

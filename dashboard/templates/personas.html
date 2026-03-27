@@ -123,13 +123,25 @@ function closeModal() {
 }
 
 async function confirmSwitch() {
+  const id = pendingPersonaId;
   closeModal();
-  const res = await fetch('/api/persona/switch', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({persona_id: pendingPersonaId})
-  });
-  if (res.ok) location.reload();
+  const btn = document.querySelector('[onclick="confirmSwitch()"]');
+  try {
+    const res = await fetch('/api/persona/switch', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({persona_id: id})
+    });
+    if (res.ok) {
+      location.reload();
+    } else {
+      const err = await res.json().catch(() => ({}));
+      alert('Gagal ganti persona: ' + (err.detail || res.status));
+    }
+  } catch(e) {
+    alert('Error: ' + e.message);
+  }
 }
 </script>
 {% endblock %}
