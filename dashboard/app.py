@@ -145,7 +145,11 @@ async def personas_page(request: Request):
 async def settings_page(request: Request):
     if not check_auth(request):
         return RedirectResponse("/login")
-    return templates.TemplateResponse("settings.html", {"request": request, "config": config})
+    return templates.TemplateResponse("settings.html", {
+        "request": request,
+        "config": config,
+        "personas": list_personas(),
+    })
 
 
 # ── API endpoints (untuk dashboard realtime) ─────────────────────────────────
@@ -232,6 +236,40 @@ async def update_settings(request: Request):
         if key in allowed and hasattr(config, key):
             setattr(config, key, type(getattr(config, key))(val))
     return {"status": "updated"}
+
+
+@app.post("/api/settings/bybit")
+async def update_settings_bybit(request: Request):
+    if not check_auth(request):
+        raise HTTPException(status_code=401)
+    data = await request.json()
+    allowed = {
+        "BYBIT_BOT_PAIR": str, "BYBIT_BOT_TIMEFRAME": str, "BYBIT_BOT_PERSONA": str,
+        "BYBIT_BOT_LEVERAGE": int, "BYBIT_BOT_SIZE": float,
+        "BYBIT_BOT_TP": float, "BYBIT_BOT_SL": float,
+    }
+    for key, cast in allowed.items():
+        if key in data:
+            val = data[key]
+            setattr(config, key, cast(val) if val not in ("", None) else None)
+    return {"status": "updated", "exchange": "bybit"}
+
+
+@app.post("/api/settings/hyperliquid")
+async def update_settings_hyperliquid(request: Request):
+    if not check_auth(request):
+        raise HTTPException(status_code=401)
+    data = await request.json()
+    allowed = {
+        "HL_BOT_PAIR": str, "HL_BOT_TIMEFRAME": str, "HL_BOT_PERSONA": str,
+        "HL_BOT_LEVERAGE": int, "HL_BOT_SIZE": float,
+        "HL_BOT_TP": float, "HL_BOT_SL": float,
+    }
+    for key, cast in allowed.items():
+        if key in data:
+            val = data[key]
+            setattr(config, key, cast(val) if val not in ("", None) else None)
+    return {"status": "updated", "exchange": "hyperliquid"}
 
 
 @app.get("/api/pnl-chart")

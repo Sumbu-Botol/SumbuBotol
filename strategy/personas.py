@@ -216,6 +216,29 @@ PERSONAS = {
         "color":       "#22c55e",
     },
 
+    "quantitative_trader": {
+        "id":          "quantitative_trader",
+        "name":        "Quantitative Trader",
+        "title":       "The Monster Scalper",
+        "emoji":       "⚡",
+        "style":       "High-Frequency Swing Scalping",
+        "description": "Masuk dan keluar di setiap swing. Tidak menunggu — eksekusi cepat di 1m/5m/15m. Banyak trade per hari, profit kecil-kecil tapi konsisten.",
+        "quote":       "Every swing is an opportunity. Speed is the edge.",
+        "risk_level":  5,
+        "timeframe":   "5m",
+        "bb_period":   14,      # pendek = responsif terhadap pergerakan kecil
+        "bb_std":      1.5,     # band sempit = lebih sering entry
+        "leverage":    10,
+        "tp_pct":      0.8,     # target kecil, cepat profit
+        "sl_pct":      0.4,     # SL sangat ketat = risk minimal per trade
+        "adx_max":     50,      # aktif di semua kondisi market
+        "vol_spike":   1.5,
+        "confirm_candles": 0,   # eksekusi langsung tanpa tunggu konfirmasi
+        "max_trades":  5,       # bisa buka banyak posisi sekaligus
+        "dca":         False,
+        "color":       "#f43f5e",
+    },
+
     "custom": {
         "id":          "custom",
         "name":        "Custom Strategy",

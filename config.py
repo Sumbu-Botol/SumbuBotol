@@ -39,7 +39,7 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "713501457")
 ACTIVE_PERSONA   = os.getenv("ACTIVE_PERSONA", "warren_buffett")
 
 # ──────────────────────────────────────────
-# STRATEGY
+# STRATEGY (shared defaults)
 # ──────────────────────────────────────────
 TRADING_PAIR     = os.getenv("TRADING_PAIR", "BTC")
 TIMEFRAME        = os.getenv("TIMEFRAME", "1h")
@@ -50,13 +50,34 @@ ADX_THRESHOLD    = float(os.getenv("ADX_THRESHOLD", "0")) or None
 VOLUME_SPIKE_X   = float(os.getenv("VOLUME_SPIKE_X", "0")) or None
 
 # ──────────────────────────────────────────
-# RISK MANAGEMENT
+# RISK MANAGEMENT (shared defaults)
 # ──────────────────────────────────────────
 TRADE_SIZE_USDC  = float(os.getenv("TRADE_SIZE_USDC", "50"))
 LEVERAGE         = int(os.getenv("LEVERAGE", "0")) or None   # None = pakai dari persona
 TAKE_PROFIT_PCT  = float(os.getenv("TAKE_PROFIT_PCT", "0")) or None
 STOP_LOSS_PCT    = float(os.getenv("STOP_LOSS_PCT", "0")) or None
 MAX_DAILY_LOSS   = float(os.getenv("MAX_DAILY_LOSS", "50"))
+
+# ──────────────────────────────────────────
+# PER-EXCHANGE BOT SETTINGS  (runtime, dapat diubah via dashboard)
+# ──────────────────────────────────────────
+# Bybit Bot
+BYBIT_BOT_PAIR      = os.getenv("BYBIT_BOT_PAIR", "BTC")
+BYBIT_BOT_TIMEFRAME = os.getenv("BYBIT_BOT_TIMEFRAME", "5m")
+BYBIT_BOT_LEVERAGE  = int(os.getenv("BYBIT_BOT_LEVERAGE", "10"))
+BYBIT_BOT_SIZE      = float(os.getenv("BYBIT_BOT_SIZE", "50"))
+BYBIT_BOT_TP        = float(os.getenv("BYBIT_BOT_TP", "0")) or None
+BYBIT_BOT_SL        = float(os.getenv("BYBIT_BOT_SL", "0")) or None
+BYBIT_BOT_PERSONA   = os.getenv("BYBIT_BOT_PERSONA", "quantitative_trader")
+
+# Hyperliquid Bot
+HL_BOT_PAIR         = os.getenv("HL_BOT_PAIR", "BTC")
+HL_BOT_TIMEFRAME    = os.getenv("HL_BOT_TIMEFRAME", "1h")
+HL_BOT_LEVERAGE     = int(os.getenv("HL_BOT_LEVERAGE", "5"))
+HL_BOT_SIZE         = float(os.getenv("HL_BOT_SIZE", "50"))
+HL_BOT_TP           = float(os.getenv("HL_BOT_TP", "0")) or None
+HL_BOT_SL           = float(os.getenv("HL_BOT_SL", "0")) or None
+HL_BOT_PERSONA      = os.getenv("HL_BOT_PERSONA", "warren_buffett")
 
 # ──────────────────────────────────────────
 # DASHBOARD

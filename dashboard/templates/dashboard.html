@@ -90,7 +90,6 @@
     <div>
       <p class="text-[11px] text-gray-500 mb-1">Total Rugi</p>
       <p class="text-lg font-bold text-red-400 truncate" id="pnlLoss">—</p>
-      <p class="text-[10px] text-gray-600" id="pnlTrades"></p>
     </div>
     <div>
       <p class="text-[11px] text-gray-500 mb-1">Delta</p>
@@ -409,7 +408,6 @@ async function loadPnlSummary() {
     const netSign = d.net_pnl >= 0 ? '+' : '-';
     net.textContent = netSign + '$' + Math.abs(d.net_pnl).toFixed(2);
     net.className   = 'text-lg font-bold truncate ' + (d.net_pnl >= 0 ? 'text-green-400' : 'text-red-400');
-    document.getElementById('pnlTrades').textContent = d.trade_count + ' trades';
     if (d.earliest_ms) {
       const since = new Date(d.earliest_ms);
       const opts  = {day:'numeric', month:'short', year:'numeric'};
