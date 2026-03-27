@@ -27,16 +27,16 @@ CRYPTO_SOURCES = [
 ]
 
 GLOBAL_SOURCES = [
-    {"name": "Bloomberg Markets",   "url": "https://feeds.bloomberg.com/markets/news.rss"},
-    {"name": "Bloomberg Economics", "url": "https://feeds.bloomberg.com/economics/news.rss"},
-    {"name": "WSJ Markets",         "url": "https://feeds.a.dj.com/rss/RSSMarketsMain.xml"},
-    {"name": "WSJ Business",        "url": "https://feeds.a.dj.com/rss/WSJcomUSBusiness.xml"},
-    {"name": "WSJ World",           "url": "https://feeds.a.dj.com/rss/RSSWorldNews.xml"},
-    {"name": "Financial Times",     "url": "https://www.ft.com/rss/home"},
-    {"name": "CNBC",                "url": "https://www.cnbc.com/id/100003114/device/rss/rss.html"},
-    {"name": "CNBC Finance",        "url": "https://www.cnbc.com/id/10000664/device/rss/rss.html"},
-    {"name": "Reuters Finance",     "url": "https://www.reutersagency.com/feed/?best-topics=business-finance"},
-    {"name": "Reuters Tech",        "url": "https://www.reutersagency.com/feed/?best-topics=tech"},
+    {"name": "Bloomberg", "url": "https://feeds.bloomberg.com/markets/news.rss"},
+    {"name": "Bloomberg", "url": "https://feeds.bloomberg.com/economics/news.rss"},
+    {"name": "WSJ",       "url": "https://feeds.a.dj.com/rss/RSSMarketsMain.xml"},
+    {"name": "WSJ",       "url": "https://feeds.a.dj.com/rss/WSJcomUSBusiness.xml"},
+    {"name": "WSJ",       "url": "https://feeds.a.dj.com/rss/RSSWorldNews.xml"},
+    {"name": "Financial Times", "url": "https://www.ft.com/rss/home"},
+    {"name": "CNBC",      "url": "https://www.cnbc.com/id/100003114/device/rss/rss.html"},
+    {"name": "CNBC",      "url": "https://www.cnbc.com/id/10000664/device/rss/rss.html"},
+    {"name": "Reuters",   "url": "https://www.reutersagency.com/feed/?best-topics=business-finance"},
+    {"name": "Reuters",   "url": "https://www.reutersagency.com/feed/?best-topics=tech"},
 ]
 
 HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; NewsBot/1.0)"}
