@@ -130,60 +130,65 @@ class BybitClient:
             return usdt + usdc
         return await self._fetch_positions_by_settle(settle)
 
-    # ── Closed PnL History (semua halaman) ───────────────────────────────────
+    # ── Closed PnL History ────────────────────────────────────────────────────
 
     async def get_closed_pnl_all(self) -> dict:
         """
-        Fetch semua closed PnL sejak awal trading (USDT + USDC perpetual).
-        Paginasi otomatis, max 50 halaman (~5000 trades).
+        Fetch closed PnL 180 hari terakhir dengan sliding 7-day window.
+        Bybit membatasi max 7 hari per query, jadi kita loop 26 window.
         """
         total_profit = 0.0
         total_loss   = 0.0
         trade_count  = 0
         earliest_ms  = None
         latest_ms    = None
-        cursor       = ""
-        page         = 0
-        MAX_PAGES    = 50
 
-        while page < MAX_PAGES:
-            ts  = str(int(time.time() * 1000))
-            # Tanpa startTime — cursor pagination otomatis dari terbaru ke terlama
-            # Bybit limit startTime/endTime = 7 hari, jadi tidak dipakai di sini
-            qs  = "category=linear&limit=100"
-            if cursor:
-                qs += f"&cursor={cursor}"
-            sig = _sign(config.BYBIT_API_SECRET, ts, qs)
-            async with _client() as client:
-                r = await client.get(
-                    f"{_base_url()}/v5/position/closed-pnl?{qs}",
-                    headers=_headers(ts, sig),
-                )
-            if not r.is_success:
-                raise RuntimeError(f"HTTP {r.status_code}")
-            data = r.json()
-            if data.get("retCode") != 0:
-                raise RuntimeError(f"Bybit {data.get('retCode')}: {data.get('retMsg')}")
+        SEVEN_DAYS   = 7 * 24 * 60 * 60 * 1000
+        now_ms       = int(time.time() * 1000)
+        cutoff_ms    = now_ms - (180 * 24 * 60 * 60 * 1000)  # 180 hari lalu
 
-            items = data["result"].get("list", [])
-            for item in items:
-                pnl   = float(item.get("closedPnl", 0))
-                ts_ms = int(item.get("createdTime", 0))
-                if pnl > 0:
-                    total_profit += pnl
-                else:
-                    total_loss   += pnl
-                trade_count += 1
-                if ts_ms:
-                    if earliest_ms is None or ts_ms < earliest_ms:
-                        earliest_ms = ts_ms
-                    if latest_ms is None or ts_ms > latest_ms:
-                        latest_ms = ts_ms
+        window_end = now_ms
+        while window_end > cutoff_ms:
+            window_start = max(window_end - SEVEN_DAYS, cutoff_ms)
+            cursor = ""
 
-            cursor = data["result"].get("nextPageCursor", "")
-            page  += 1
-            if not cursor or not items:
-                break
+            while True:
+                ts  = str(int(time.time() * 1000))
+                qs  = f"category=linear&limit=100&startTime={window_start}&endTime={window_end}"
+                if cursor:
+                    qs += f"&cursor={cursor}"
+                sig = _sign(config.BYBIT_API_SECRET, ts, qs)
+                async with _client() as client:
+                    r = await client.get(
+                        f"{_base_url()}/v5/position/closed-pnl?{qs}",
+                        headers=_headers(ts, sig),
+                    )
+                if not r.is_success:
+                    raise RuntimeError(f"HTTP {r.status_code}")
+                data = r.json()
+                if data.get("retCode") != 0:
+                    raise RuntimeError(f"Bybit {data.get('retCode')}: {data.get('retMsg')}")
+
+                items = data["result"].get("list", [])
+                for item in items:
+                    pnl   = float(item.get("closedPnl", 0))
+                    ts_ms = int(item.get("createdTime", 0))
+                    if pnl > 0:
+                        total_profit += pnl
+                    else:
+                        total_loss   += pnl
+                    trade_count += 1
+                    if ts_ms:
+                        if earliest_ms is None or ts_ms < earliest_ms:
+                            earliest_ms = ts_ms
+                        if latest_ms is None or ts_ms > latest_ms:
+                            latest_ms = ts_ms
+
+                cursor = data["result"].get("nextPageCursor", "")
+                if not cursor or not items:
+                    break
+
+            window_end = window_start  # geser window mundur ke periode berikutnya
 
         return {
             "total_profit": round(total_profit, 4),
