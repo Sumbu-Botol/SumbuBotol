@@ -123,7 +123,7 @@ class NewsFetcher:
                 articles.append({
                     "title":     title.strip(),
                     "url":       link.strip(),
-                    "summary":   desc[:300] if desc else "",
+                    "summary":   desc[:800] if desc else "",
                     "source":    source_name,
                     "category":  category,
                     "published": pub.isoformat() if pub else datetime.now(timezone.utc).isoformat(),

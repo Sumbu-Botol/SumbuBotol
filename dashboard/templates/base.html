@@ -10,21 +10,52 @@
 <body class="bg-gray-950 text-gray-100 min-h-screen font-mono">
 
   <!-- Navbar -->
-  <nav class="bg-gray-900 border-b border-gray-800 px-6 py-3 flex items-center justify-between">
-    <span class="text-yellow-400 font-bold text-lg">🤖 SumbuBotol Trading</span>
-    <div class="flex gap-4 text-sm">
-      <a href="/"         class="hover:text-yellow-400">Dashboard</a>
-      <a href="/news"     class="hover:text-yellow-400">📰 Berita</a>
-      <a href="/personas" class="hover:text-yellow-400">🎭 Persona</a>
-      <a href="/history"  class="hover:text-yellow-400">History</a>
-      <a href="/settings" class="hover:text-yellow-400">Settings</a>
-      <a href="/logout"   class="text-red-400 hover:text-red-300">Logout</a>
+  <nav class="bg-gray-900 border-b border-gray-800 px-4 py-3">
+    <div class="flex items-center justify-between">
+      <span class="text-yellow-400 font-bold text-base">🤖 SumbuBotol</span>
+
+      <!-- Hamburger button (mobile only) -->
+      <button id="navToggle" class="sm:hidden p-1 rounded text-gray-400 hover:text-white" onclick="toggleNav()">
+        <svg id="iconMenu" xmlns="http://www.w3.org/2000/svg" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        <svg id="iconClose" xmlns="http://www.w3.org/2000/svg" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" class="hidden"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+
+      <!-- Desktop links -->
+      <div class="hidden sm:flex gap-4 text-sm">
+        <a href="/"         class="hover:text-yellow-400">Dashboard</a>
+        <a href="/news"     class="hover:text-yellow-400">📰 Berita</a>
+        <a href="/personas" class="hover:text-yellow-400">🎭 Persona</a>
+        <a href="/history"  class="hover:text-yellow-400">History</a>
+        <a href="/settings" class="hover:text-yellow-400">Settings</a>
+        <a href="/logout"   class="text-red-400 hover:text-red-300">Logout</a>
+      </div>
+    </div>
+
+    <!-- Mobile dropdown menu -->
+    <div id="mobileNav" class="hidden sm:hidden mt-3 flex flex-col gap-1 text-sm border-t border-gray-800 pt-3">
+      <a href="/"         class="py-2 px-2 rounded hover:bg-gray-800 hover:text-yellow-400">Dashboard</a>
+      <a href="/news"     class="py-2 px-2 rounded hover:bg-gray-800 hover:text-yellow-400">📰 Berita</a>
+      <a href="/personas" class="py-2 px-2 rounded hover:bg-gray-800 hover:text-yellow-400">🎭 Persona</a>
+      <a href="/history"  class="py-2 px-2 rounded hover:bg-gray-800 hover:text-yellow-400">History</a>
+      <a href="/settings" class="py-2 px-2 rounded hover:bg-gray-800 hover:text-yellow-400">Settings</a>
+      <a href="/logout"   class="py-2 px-2 rounded hover:bg-gray-800 text-red-400 hover:text-red-300">Logout</a>
     </div>
   </nav>
 
-  <main class="p-6">
+  <main class="p-4 sm:p-6">
     {% block content %}{% endblock %}
   </main>
+
+  <script>
+    function toggleNav() {
+      const nav   = document.getElementById('mobileNav');
+      const menu  = document.getElementById('iconMenu');
+      const close = document.getElementById('iconClose');
+      const open  = nav.classList.toggle('hidden');
+      menu.classList.toggle('hidden', !open);
+      close.classList.toggle('hidden', open);
+    }
+  </script>
 
   {% block scripts %}{% endblock %}
 </body>

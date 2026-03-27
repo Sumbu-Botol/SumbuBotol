@@ -246,7 +246,7 @@ async def main():
     # Jalankan news fetcher (poll RSS setiap 60 detik)
     news_fetcher = NewsFetcher()
     set_news_fetcher(news_fetcher)
-    asyncio.create_task(news_fetcher.start(interval=60))
+    asyncio.create_task(news_fetcher.start(interval=30))
 
     # Jalankan daily report scheduler
     asyncio.create_task(daily_report_scheduler(runner))
