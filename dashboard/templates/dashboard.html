@@ -92,13 +92,6 @@
     </div>
   </div>
 
-  <!-- Filter -->
-  <div class="flex gap-2 mb-3 text-xs">
-    <button onclick="setSettle('ALL')"  id="sf-ALL"  class="settle-btn px-2 py-1 rounded bg-yellow-400 text-black font-bold">Semua</button>
-    <button onclick="setSettle('USDT')" id="sf-USDT" class="settle-btn px-2 py-1 rounded bg-gray-800 text-gray-400">USDT Perp</button>
-    <button onclick="setSettle('USDC')" id="sf-USDC" class="settle-btn px-2 py-1 rounded bg-gray-800 text-gray-400">USDC Perp</button>
-  </div>
-
   <div id="bybitPositions">
     <p class="text-gray-600 text-sm">Memuat posisi...</p>
   </div>
@@ -219,28 +212,17 @@ async function botAction(action) {
 }
 
 // ── Bybit Position Monitor ─────────────────────────────────────────────────
-let _settle = 'ALL';
 let _bybitPositions = [];
-let _bybitEmptyCount = 0;      // berapa kali berturut-turut dapat posisi kosong
-const EMPTY_CONFIRM = 4;       // butuh 4x berturut-turut kosong sebelum clear UI
-let _bybitLoading = false;     // cegah concurrent request
-
-function setSettle(s) {
-  _settle = s;
-  document.querySelectorAll('.settle-btn').forEach(b => {
-    b.className = 'settle-btn px-2 py-1 rounded ' +
-      (b.id === 'sf-' + s ? 'bg-yellow-400 text-black font-bold' : 'bg-gray-800 text-gray-400');
-  });
-  _bybitEmptyCount = 0;
-  loadBybit();
-}
+let _bybitEmptyCount = 0;
+const EMPTY_CONFIRM = 4;
+let _bybitLoading = false;
 
 async function loadBybit() {
   if (_bybitLoading) return;   // skip kalau request sebelumnya belum selesai
   _bybitLoading = true;
   try {
     const [posResp, balResp] = await Promise.all([
-      fetch(`/api/bybit/positions?settle=${_settle}`, {credentials: 'same-origin'}),
+      fetch('/api/bybit/positions', {credentials: 'same-origin'}),
       fetch('/api/bybit/balance', {credentials: 'same-origin'}),
     ]);
     if (!posResp.ok || !balResp.ok) throw new Error('HTTP ' + posResp.status);
