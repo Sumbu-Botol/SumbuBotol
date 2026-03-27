@@ -1,3 +1,4 @@
+import asyncio
 from fastapi import FastAPI, Request, Depends, HTTPException, Form, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
@@ -414,6 +415,54 @@ async def bybit_test(request: Request):
     except Exception as e:
         result["exception"] = str(e)
     return result
+
+@app.post("/api/bybit/bot/force-trade")
+async def bybit_force_trade(request: Request):
+    """Paksa buka 1 order kecil lalu langsung tutup — untuk verifikasi bot bisa eksekusi."""
+    if not check_auth(request):
+        raise HTTPException(status_code=401)
+    if _bybit_not_configured():
+        return {"error": "API key belum dikonfigurasi"}
+    try:
+        import time as _time
+        client = _bybit()
+
+        # Ambil harga mark terkini
+        tickers = await client.get_tickers(["BTCUSDT"])
+        mark_price = tickers.get("BTCUSDT", {}).get("mark_price", 0)
+        if not mark_price:
+            return {"error": "Gagal ambil harga BTCUSDT"}
+
+        # Set leverage
+        await client.set_leverage("BTCUSDT", 10)
+
+        # Order minimum: 0.001 BTC (Bybit minimum)
+        qty = 0.001
+        tp  = round(mark_price * 1.005, 2)   # TP +0.5%
+        sl  = round(mark_price * 0.995, 2)   # SL -0.5%
+
+        # Buka LONG
+        open_result = await client.place_order("BTCUSDT", "Buy", qty, tp=tp, sl=sl)
+        if open_result.get("retCode") != 0:
+            return {"error": f"Order gagal: {open_result.get('retMsg')}", "detail": open_result}
+
+        await asyncio.sleep(2)
+
+        # Tutup langsung
+        close_result = await client.close_position("BTCUSDT", "Buy", qty)
+
+        return {
+            "status":       "ok",
+            "mark_price":   mark_price,
+            "qty":          qty,
+            "open_retCode": open_result.get("retCode"),
+            "open_orderId": open_result.get("result", {}).get("orderId"),
+            "close_retCode": close_result.get("retCode"),
+            "message":      "Test order berhasil — bot BISA eksekusi ke Bybit!" if open_result.get("retCode") == 0 else "Gagal",
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
 
 @app.get("/api/bybit/balance")
 async def bybit_balance(request: Request):
