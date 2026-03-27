@@ -178,6 +178,40 @@ async def api_status():
     }
 
 
+@app.get("/api/bybit/bot/status")
+async def bybit_bot_status(request: Request):
+    if not check_auth(request):
+        raise HTTPException(status_code=401)
+    runner = _bybit_bot_runner
+    if not runner:
+        return {"error": "BybitBotRunner belum diinisialisasi"}
+
+    # Cek saldo Bybit
+    balance_info = {}
+    if _bybit_not_configured():
+        balance_info = {"error": "API key belum dikonfigurasi"}
+    else:
+        try:
+            balance_info = await _bybit().get_balance()
+        except Exception as e:
+            balance_info = {"error": str(e)}
+
+    return {
+        "is_running":      runner.is_running,
+        "is_configured":   runner.is_configured(),
+        "persona":         config.BYBIT_BOT_PERSONA,
+        "pair":            config.BYBIT_BOT_PAIR + "USDT",
+        "timeframe":       config.BYBIT_BOT_TIMEFRAME,
+        "leverage":        config.BYBIT_BOT_LEVERAGE,
+        "trade_size_usdt": config.BYBIT_BOT_SIZE,
+        "active_trades":   list(runner._active_trades.keys()),
+        "open_trade_count": len(runner._active_trades),
+        "balance":         balance_info,
+        "poll_interval_s": config.POLL_INTERVAL,
+        "timestamp":       datetime.now(timezone.utc).isoformat(),
+    }
+
+
 @app.post("/api/persona/switch")
 async def persona_switch(request: Request):
     if not check_auth(request):
