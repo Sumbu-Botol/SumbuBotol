@@ -287,10 +287,13 @@ async def ws_news(websocket: WebSocket):
     await websocket.accept()
     _ws_clients.append(websocket)
     try:
-        # Kirim artikel yang sudah ada saat pertama connect
+        # Kirim SEMUA artikel crypto + global secara terpisah saat pertama connect
         if _news_fetcher:
-            latest = _news_fetcher.get_latest(30)
-            await websocket.send_json({"type": "init", "data": latest})
+            await websocket.send_json({
+                "type": "init",
+                "crypto": _news_fetcher.get_crypto(100),
+                "global": _news_fetcher.get_global(100),
+            })
         while True:
             await websocket.receive_text()   # keep alive
     except WebSocketDisconnect:

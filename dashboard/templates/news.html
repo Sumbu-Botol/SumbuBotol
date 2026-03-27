@@ -324,8 +324,9 @@ function connectWS() {
   ws.onmessage = (e) => {
     const msg = JSON.parse(e.data);
     if (msg.type === 'init') {
-      msg.data.forEach(a => storeArticle(a, false));
-      // Sort newest first after bulk load
+      // Terima crypto dan global secara terpisah, langsung sorted
+      (msg.crypto || []).forEach(a => storeArticle(a, false));
+      (msg.global || []).forEach(a => storeArticle(a, false));
       cryptoArticles.sort((a, b) => b.published_ts - a.published_ts);
       globalArticles.sort((a, b) => b.published_ts - a.published_ts);
       renderFeed();
@@ -341,6 +342,21 @@ function connectWS() {
 }
 
 setInterval(() => { if (ws?.readyState === 1) ws.send('ping'); }, 25000);
+
+// Auto HTTP fallback setiap 30 detik — pastikan selalu ada artikel terbaru
+setInterval(async () => {
+  try {
+    const [c, g] = await Promise.all([
+      fetch('/api/news/crypto').then(r => r.json()),
+      fetch('/api/news/global').then(r => r.json()),
+    ]);
+    c.forEach(a => storeArticle(a, false));
+    g.forEach(a => storeArticle(a, false));
+    cryptoArticles.sort((a, b) => b.published_ts - a.published_ts);
+    globalArticles.sort((a, b) => b.published_ts - a.published_ts);
+    renderFeed();
+  } catch(_) {}
+}, 30000);
 
 // ── Data ───────────────────────────────────────────────────────────────────
 const _newIds = new Set();

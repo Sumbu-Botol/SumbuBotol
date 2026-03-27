@@ -41,6 +41,53 @@ GLOBAL_SOURCES = [
 
 HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; NewsBot/1.0)"}
 
+# ── Category Detection (persis seperti repo asli) ─────────────────────────────
+
+GLOBAL_CATEGORY_KEYWORDS: dict[str, list[str]] = {
+    "Ekonomi AS":    ["federal reserve", "fed rate", "us economy", "us gdp", "us inflation",
+                      "treasury yield", "american economy", "united states economy", "wall street",
+                      "s&p 500", "nasdaq", "dow jones", "us jobs", "nonfarm payroll"],
+    "China":         ["china", "chinese economy", "beijing", "xi jinping", "yuan", "pboc",
+                      "hong kong", "shenzhen", "shanghai composite"],
+    "Eropa":         ["european central bank", "ecb", "euro zone", "eurozone", "germany gdp",
+                      "france economy", "uk economy", "bank of england", "boe", "brexit"],
+    "Ekonomi Global":["imf", "world bank", "trade war", "tariff", "geopolitical", "g7", "g20",
+                      "global trade", "global growth", "world economy"],
+    "Energi":        ["oil price", "crude oil", "opec", "petroleum", "brent crude", "wti crude",
+                      "natural gas price", "energy market"],
+    "Komoditas":     ["gold price", "copper price", "commodities market", "metals", "iron ore",
+                      "wheat price", "agricultural"],
+    "Pasar Global":  ["stock market", "equities", "market rally", "market selloff", "bull market",
+                      "bear market", "volatility", "risk-off", "risk-on"],
+}
+
+CRYPTO_CATEGORY_KEYWORDS: dict[str, list[str]] = {
+    "Bitcoin":        ["bitcoin", "btc", "satoshi", "halving"],
+    "Ethereum":       ["ethereum", "eth", "vitalik", "eip", "merge"],
+    "DeFi":           ["defi", "decentralized finance", "tvl", "liquidity pool", "yield farming",
+                       "amm", "uniswap", "aave", "compound"],
+    "NFT":            ["nft", "non-fungible", "opensea", "collectible"],
+    "Regulasi Kripto":["sec", "regulation", "lawsuit", "ban", "legal", "congress", "senate",
+                       "cftc", "compliance"],
+    "Mining":         ["mining", "hashrate", "miner", "asic", "proof of work"],
+    "Altcoin":        ["altcoin", "solana", "sol", "bnb", "xrp", "cardano", "ada", "polygon",
+                       "matic", "avalanche", "avax", "chainlink", "link"],
+}
+
+def detect_global_category(title: str, description: str) -> str:
+    text = (title + " " + description).lower()
+    for category, keywords in GLOBAL_CATEGORY_KEYWORDS.items():
+        if any(kw in text for kw in keywords):
+            return category
+    return "Global"
+
+def detect_crypto_category(title: str, description: str) -> str:
+    text = (title + " " + description).lower()
+    for category, keywords in CRYPTO_CATEGORY_KEYWORDS.items():
+        if any(kw in text for kw in keywords):
+            return category
+    return "Pasar"
+
 
 class NewsFetcher:
     def __init__(self):
@@ -59,7 +106,10 @@ class NewsFetcher:
         else:
             print("[News] Gemini tidak dikonfigurasi — tampilkan teks RSS mentah")
         while True:
-            await self._fetch_all()
+            try:
+                await self._fetch_all()
+            except Exception as e:
+                print(f"[News] _fetch_all error: {e}")
             await asyncio.sleep(interval)
 
     # ── Fetch cycle ───────────────────────────────────────────────────────────
@@ -264,12 +314,17 @@ def _parse_rss(xml_text: str, source_name: str, category: str) -> list[dict]:
             desc = re.sub(r'<[^>]+>', '', dm.group(1)).strip()[:800]
 
         pub = _parse_date(pm.group(1).strip() if pm else None)
+        if category == "global":
+            sub_cat = detect_global_category(title, desc)
+        else:
+            sub_cat = detect_crypto_category(title, desc)
         articles.append({
             "title":        title,
             "url":          url,
             "summary":      desc,
             "source":       source_name,
             "category":     category,
+            "sub_category": sub_cat,
             "published":    pub.isoformat() if pub else datetime.now(timezone.utc).isoformat(),
             "published_ts": pub.timestamp() if pub else datetime.now(timezone.utc).timestamp(),
         })
