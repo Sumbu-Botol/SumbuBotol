@@ -102,7 +102,7 @@
 <div class="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-6" id="bybitPanel">
   <!-- Row 1: judul + refresh -->
   <div class="flex items-center justify-between mb-1">
-    <h3 class="text-sm font-bold text-gray-400">Bybit — Posisi Aktif <span class="text-gray-600 font-normal">USDT + USDC</span></h3>
+    <h3 class="text-sm font-bold text-gray-400">Bybit — Posisi Aktif</h3>
     <button onclick="loadBybit()" class="text-xs text-yellow-400 hover:underline flex-shrink-0">↻ Refresh</button>
   </div>
   <!-- Row 2: balance -->
@@ -288,57 +288,46 @@ function renderBybitPositions() {
     el.innerHTML = '<p class="text-gray-600 text-sm">Tidak ada posisi terbuka.</p>';
     return;
   }
-  el.innerHTML = `
-  <div class="overflow-x-auto">
-  <table class="w-full text-xs min-w-[600px]">
-    <thead><tr class="text-gray-500 border-b border-gray-800">
-      <th class="text-left py-2">Symbol</th>
-      <th class="text-left py-2">Side</th>
-      <th class="text-right py-2">Size</th>
-      <th class="text-right py-2">Entry</th>
-      <th class="text-right py-2">Mark</th>
-      <th class="text-right py-2">uPnL</th>
-      <th class="text-right py-2">Lev</th>
-      <th class="text-right py-2">TP</th>
-      <th class="text-right py-2">SL</th>
-      <th class="text-right py-2">Settle</th>
-      <th class="text-center py-2">Aksi</th>
-    </tr></thead>
-    <tbody>
-    ${_bybitPositions.map(p => {
-      const pnlColor = p.unrealized_pnl >= 0 ? 'text-green-400' : 'text-red-400';
-      const sideColor = p.side === 'Buy' ? 'text-green-400' : 'text-red-400';
-      const sideTxt   = p.side === 'Buy' ? 'LONG' : 'SHORT';
-      return `
-      <tr class="border-t border-gray-800 hover:bg-gray-800/50">
-        <td class="py-2 font-bold text-white">${p.symbol}</td>
-        <td class="py-2 ${sideColor} font-bold">${sideTxt}</td>
-        <td class="py-2 text-right">${p.size}</td>
-        <td class="py-2 text-right">$${p.entry_price.toFixed(4)}</td>
-        <td class="py-2 text-right">$${p.mark_price.toFixed(4)}</td>
-        <td class="py-2 text-right ${pnlColor} font-bold">
-          ${p.unrealized_pnl >= 0 ? '+' : ''}$${p.unrealized_pnl.toFixed(2)}
-          <span class="text-gray-500">(${p.pnl_pct >= 0 ? '+' : ''}${p.pnl_pct}%)</span>
-        </td>
-        <td class="py-2 text-right">${p.leverage}x</td>
-        <td class="py-2 text-right text-green-600">${p.tp_price ? '$' + p.tp_price.toFixed(2) : '—'}</td>
-        <td class="py-2 text-right text-red-600">${p.sl_price ? '$' + p.sl_price.toFixed(2) : '—'}</td>
-        <td class="py-2 text-right">
-          <span class="px-1.5 py-0.5 rounded text-[10px] ${p.settle === 'USDC' ? 'bg-blue-900 text-blue-300' : 'bg-green-900 text-green-300'}">${p.settle}</span>
-        </td>
-        <td class="py-2 text-center">
-          <div class="flex gap-1 justify-center">
-            <button onclick="openTpSl('${p.symbol}', ${p.tp_price}, ${p.sl_price})"
-                    class="bg-yellow-800 hover:bg-yellow-700 text-yellow-200 px-2 py-1 rounded text-[10px]">TP/SL</button>
-            <button onclick="closePos('${p.symbol}', '${p.side}', ${p.size})"
-                    class="bg-red-900 hover:bg-red-800 text-red-200 px-2 py-1 rounded text-[10px]">Tutup</button>
-          </div>
-        </td>
-      </tr>`;
-    }).join('')}
-    </tbody>
-  </table>
-  </div>`;
+  el.innerHTML = _bybitPositions.map(p => {
+    const pnlColor  = p.unrealized_pnl >= 0 ? 'text-green-400' : 'text-red-400';
+    const sideColor = p.side === 'Buy' ? 'text-green-400' : 'text-red-400';
+    const sideTxt   = p.side === 'Buy' ? 'LONG' : 'SHORT';
+    const pnlSign   = p.unrealized_pnl >= 0 ? '+' : '';
+    const settleBadge = p.settle === 'USDC'
+      ? 'bg-blue-900 text-blue-300' : 'bg-green-900 text-green-300';
+    return `
+    <div class="border border-gray-800 rounded-lg p-3 mb-2">
+      <!-- Baris 1: Symbol + Side + Settle + Aksi -->
+      <div class="flex items-center justify-between mb-2">
+        <div class="flex items-center gap-2">
+          <span class="font-bold text-white text-sm">${p.symbol}</span>
+          <span class="font-bold text-xs ${sideColor}">${sideTxt}</span>
+          <span class="px-1.5 py-0.5 rounded text-[10px] ${settleBadge}">${p.settle}</span>
+          <span class="text-gray-500 text-xs">${p.leverage}x</span>
+        </div>
+        <div class="flex gap-1">
+          <button onclick="openTpSl('${p.symbol}', ${p.tp_price}, ${p.sl_price})"
+                  class="bg-yellow-800 hover:bg-yellow-700 text-yellow-200 px-2 py-1 rounded text-xs">TP/SL</button>
+          <button onclick="closePos('${p.symbol}', '${p.side}', ${p.size})"
+                  class="bg-red-900 hover:bg-red-800 text-red-200 px-2 py-1 rounded text-xs">Tutup</button>
+        </div>
+      </div>
+      <!-- Baris 2: uPnL besar -->
+      <div class="text-xl font-bold ${pnlColor} mb-2">
+        ${pnlSign}$${p.unrealized_pnl.toFixed(2)}
+        <span class="text-sm font-normal text-gray-500">(${p.pnl_pct >= 0 ? '+' : ''}${p.pnl_pct}%)</span>
+      </div>
+      <!-- Baris 3: detail grid -->
+      <div class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-gray-400">
+        <div><span class="text-gray-600">Size</span> <span class="text-white">${p.size}</span></div>
+        <div><span class="text-gray-600">Entry</span> <span class="text-white">$${p.entry_price.toFixed(2)}</span></div>
+        <div><span class="text-gray-600">Mark</span> <span class="text-white">$${p.mark_price.toFixed(2)}</span></div>
+        <div><span class="text-gray-600">Liq</span> <span class="text-red-500">${p.liq_price ? '$' + p.liq_price.toFixed(2) : '—'}</span></div>
+        <div><span class="text-gray-600">TP</span> <span class="text-green-500">${p.tp_price ? '$' + p.tp_price.toFixed(2) : '—'}</span></div>
+        <div><span class="text-gray-600">SL</span> <span class="text-red-500">${p.sl_price ? '$' + p.sl_price.toFixed(2) : '—'}</span></div>
+      </div>
+    </div>`;
+  }).join('');
 }
 
 async function closePos(symbol, side, size) {
