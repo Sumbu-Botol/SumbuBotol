@@ -325,6 +325,9 @@ function connectWS() {
     const msg = JSON.parse(e.data);
     if (msg.type === 'init') {
       msg.data.forEach(a => storeArticle(a, false));
+      // Sort newest first after bulk load
+      cryptoArticles.sort((a, b) => b.published_ts - a.published_ts);
+      globalArticles.sort((a, b) => b.published_ts - a.published_ts);
       renderFeed();
     } else if (msg.type === 'news') {
       storeArticle(msg.data, true);

@@ -2,156 +2,140 @@
 News Fetcher
 ============
 Fetch berita kripto & global dari RSS feeds.
-Poll setiap 60 detik - begitu ada artikel baru langsung tersedia.
+- Regex-based RSS parsing (handles CDATA, Bloomberg, FT)
+- Optional Gemini AI: terjemah judul ke Indonesia + 3 bullet Bloomberg-style
+- Poll setiap 30 detik, push real-time via WebSocket
 """
 import asyncio
 import httpx
 import re
+import json
 import hashlib
+import os
 from datetime import datetime, timezone
 from typing import Optional
+
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 
 # ── RSS Sources ───────────────────────────────────────────────────────────────
 
 CRYPTO_SOURCES = [
-    {"name": "CoinDesk",      "url": "https://www.coindesk.com/arc/outboundfeeds/rss/",  "lang": "en"},
-    {"name": "CoinTelegraph", "url": "https://cointelegraph.com/rss",                    "lang": "en"},
-    {"name": "Decrypt",       "url": "https://decrypt.co/feed",                          "lang": "en"},
-    {"name": "The Block",     "url": "https://www.theblock.co/rss.xml",                  "lang": "en"},
+    {"name": "CoinDesk",      "url": "https://www.coindesk.com/arc/outboundfeeds/rss/"},
+    {"name": "CoinTelegraph", "url": "https://cointelegraph.com/rss"},
+    {"name": "Decrypt",       "url": "https://decrypt.co/feed"},
+    {"name": "The Block",     "url": "https://www.theblock.co/rss.xml"},
 ]
 
 GLOBAL_SOURCES = [
-    {"name": "Bloomberg Markets",   "url": "https://feeds.bloomberg.com/markets/news.rss",                       "lang": "en"},
-    {"name": "Bloomberg Economics", "url": "https://feeds.bloomberg.com/economics/news.rss",                     "lang": "en"},
-    {"name": "WSJ Markets",         "url": "https://feeds.a.dj.com/rss/RSSMarketsMain.xml",                      "lang": "en"},
-    {"name": "WSJ Business",        "url": "https://feeds.a.dj.com/rss/WSJcomUSBusiness.xml",                    "lang": "en"},
-    {"name": "WSJ World",           "url": "https://feeds.a.dj.com/rss/RSSWorldNews.xml",                        "lang": "en"},
-    {"name": "Financial Times",     "url": "https://www.ft.com/rss/home",                                        "lang": "en"},
-    {"name": "CNBC",                "url": "https://www.cnbc.com/id/100003114/device/rss/rss.html",              "lang": "en"},
-    {"name": "CNBC Finance",        "url": "https://www.cnbc.com/id/10000664/device/rss/rss.html",               "lang": "en"},
-    {"name": "Reuters Finance",     "url": "https://www.reutersagency.com/feed/?best-topics=business-finance",   "lang": "en"},
-    {"name": "Reuters Tech",        "url": "https://www.reutersagency.com/feed/?best-topics=tech",               "lang": "en"},
+    {"name": "Bloomberg Markets",   "url": "https://feeds.bloomberg.com/markets/news.rss"},
+    {"name": "Bloomberg Economics", "url": "https://feeds.bloomberg.com/economics/news.rss"},
+    {"name": "WSJ Markets",         "url": "https://feeds.a.dj.com/rss/RSSMarketsMain.xml"},
+    {"name": "WSJ Business",        "url": "https://feeds.a.dj.com/rss/WSJcomUSBusiness.xml"},
+    {"name": "WSJ World",           "url": "https://feeds.a.dj.com/rss/RSSWorldNews.xml"},
+    {"name": "Financial Times",     "url": "https://www.ft.com/rss/home"},
+    {"name": "CNBC",                "url": "https://www.cnbc.com/id/100003114/device/rss/rss.html"},
+    {"name": "CNBC Finance",        "url": "https://www.cnbc.com/id/10000664/device/rss/rss.html"},
+    {"name": "Reuters Finance",     "url": "https://www.reutersagency.com/feed/?best-topics=business-finance"},
+    {"name": "Reuters Tech",        "url": "https://www.reutersagency.com/feed/?best-topics=tech"},
 ]
 
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (compatible; NewsBot/1.0)"
-}
+HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; NewsBot/1.0)"}
 
 
 class NewsFetcher:
     def __init__(self):
-        # In-memory cache: url_hash → article
         self._crypto_articles: list[dict] = []
         self._global_articles: list[dict] = []
         self._seen_hashes: set  = set()
-        self._new_articles: list[dict] = []   # buffer artikel baru sejak last poll
-        self._callbacks: list   = []          # WebSocket callbacks
+        self._callbacks: list   = []
 
     def on_new_article(self, callback):
-        """Register callback untuk artikel baru."""
         self._callbacks.append(callback)
 
-    async def start(self, interval: int = 60):
-        """Mulai polling RSS setiap `interval` detik."""
+    async def start(self, interval: int = 30):
         print(f"[News] Fetcher dimulai, poll setiap {interval}s")
+        if GEMINI_API_KEY:
+            print("[News] Gemini AI aktif — judul akan diterjemahkan + ringkasan Bloomberg")
+        else:
+            print("[News] Gemini tidak dikonfigurasi — tampilkan teks RSS mentah")
         while True:
             await self._fetch_all()
             await asyncio.sleep(interval)
 
-    async def _fetch_all(self):
-        tasks = (
-            [self._fetch_source(s, "crypto") for s in CRYPTO_SOURCES] +
-            [self._fetch_source(s, "global") for s in GLOBAL_SOURCES]
-        )
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        new_count = sum(r for r in results if isinstance(r, int))
-        if new_count:
-            print(f"[News] {new_count} artikel baru ditemukan")
+    # ── Fetch cycle ───────────────────────────────────────────────────────────
 
-    async def _fetch_source(self, source: dict, category: str) -> int:
+    async def _fetch_all(self):
+        crypto_tasks = [self._fetch_source(s, "crypto") for s in CRYPTO_SOURCES]
+        global_tasks = [self._fetch_source(s, "global") for s in GLOBAL_SOURCES]
+        results = await asyncio.gather(*(crypto_tasks + global_tasks), return_exceptions=True)
+
+        new_crypto = []
+        new_global = []
+        for res in results:
+            if isinstance(res, list):
+                for a in res:
+                    if a["category"] == "crypto":
+                        new_crypto.append(a)
+                    else:
+                        new_global.append(a)
+
+        if not new_crypto and not new_global:
+            return
+
+        print(f"[News] {len(new_crypto)} kripto baru, {len(new_global)} global baru")
+
+        # AI process jika Gemini tersedia
+        if GEMINI_API_KEY:
+            if new_crypto:
+                new_crypto = await _ai_process(new_crypto, "crypto")
+            if new_global:
+                new_global = await _ai_process(new_global, "global")
+
+        # Masukkan ke cache, urutkan newest first
+        for a in new_crypto:
+            self._crypto_articles.insert(0, a)
+        for a in new_global:
+            self._global_articles.insert(0, a)
+
+        self._crypto_articles.sort(key=lambda x: x["published_ts"], reverse=True)
+        self._global_articles.sort(key=lambda x: x["published_ts"], reverse=True)
+
+        self._crypto_articles = self._crypto_articles[:200]
+        self._global_articles = self._global_articles[:200]
+
+        # Broadcast ke WebSocket clients
+        all_new = sorted(new_crypto + new_global, key=lambda x: x["published_ts"], reverse=True)
+        for a in all_new:
+            for cb in self._callbacks:
+                try:
+                    await cb(a)
+                except Exception:
+                    pass
+
+    async def _fetch_source(self, source: dict, category: str) -> list[dict]:
+        """Fetch satu RSS source, return list artikel BARU (belum di cache)."""
         try:
             async with httpx.AsyncClient(timeout=8, headers=HEADERS, follow_redirects=True) as client:
                 r = await client.get(source["url"])
                 if r.status_code != 200:
                     print(f"[News] HTTP {r.status_code} dari {source['name']}")
-                    return 0
-                articles = self._parse_rss(r.text, source["name"], category)
-                new = 0
+                    return []
+                articles = _parse_rss(r.text, source["name"], category)
+                new = []
                 for a in articles:
                     h = _hash(a["url"])
                     if h not in self._seen_hashes:
                         self._seen_hashes.add(h)
                         a["id"] = h
-                        if category == "crypto":
-                            self._crypto_articles.insert(0, a)
-                        else:
-                            self._global_articles.insert(0, a)
-                        self._new_articles.append(a)
-                        new += 1
-                        # Broadcast ke semua WebSocket client
-                        for cb in self._callbacks:
-                            try:
-                                await cb(a)
-                            except Exception:
-                                pass
-
-                # Batasi cache: max 100 artikel per kategori
-                if category == "crypto":
-                    self._crypto_articles = self._crypto_articles[:100]
-                else:
-                    self._global_articles = self._global_articles[:100]
+                        new.append(a)
                 if new:
-                    print(f"[News] OK {source['name']}: +{new} artikel")
+                    print(f"[News] OK {source['name']}: +{len(new)} artikel")
                 return new
         except Exception as e:
             print(f"[News] GAGAL {source['name']}: {type(e).__name__}: {e}")
-            return 0
+            return []
 
-    def _parse_rss(self, xml_text: str, source_name: str, category: str) -> list[dict]:
-        """Regex-based RSS parser — handles CDATA, malformed XML, Bloomberg, FT, etc."""
-        articles = []
-        try:
-            _item   = re.compile(r'<item>([\s\S]*?)</item>')
-            _title  = re.compile(r'<title[^>]*>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?</title>')
-            _link   = re.compile(r'<link[^>]*>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?</link>')
-            _guid   = re.compile(r'<guid[^>]*isPermaLink="true"[^>]*>([\s\S]*?)</guid>')
-            _desc   = re.compile(r'<description[^>]*>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?</description>')
-            _date   = re.compile(r'<pubDate[^>]*>([\s\S]*?)</pubDate>')
-
-            for m in _item.finditer(xml_text):
-                item = m.group(1)
-                tm = _title.search(item)
-                lm = _link.search(item) or _guid.search(item)
-                dm = _desc.search(item)
-                pm = _date.search(item)
-
-                if not tm or not lm:
-                    continue
-
-                title = tm.group(1).strip()
-                url   = lm.group(1).strip()
-                if not url.startswith("http"):
-                    continue
-
-                desc = ""
-                if dm:
-                    desc = re.sub(r'<[^>]+>', '', dm.group(1)).strip()[:800]
-
-                pub = _parse_date(pm.group(1).strip() if pm else None)
-                articles.append({
-                    "title":        title,
-                    "url":          url,
-                    "summary":      desc,
-                    "source":       source_name,
-                    "category":     category,
-                    "published":    pub.isoformat() if pub else datetime.now(timezone.utc).isoformat(),
-                    "published_ts": pub.timestamp() if pub else datetime.now(timezone.utc).timestamp(),
-                })
-                if len(articles) >= 20:
-                    break
-        except Exception as e:
-            print(f"[News] Parse error {source_name}: {e}")
-        return articles
+    # ── Public getters ────────────────────────────────────────────────────────
 
     def get_crypto(self, limit: int = 50) -> list[dict]:
         return self._crypto_articles[:limit]
@@ -159,10 +143,140 @@ class NewsFetcher:
     def get_global(self, limit: int = 50) -> list[dict]:
         return self._global_articles[:limit]
 
-    def get_latest(self, limit: int = 20) -> list[dict]:
-        all_articles = self._crypto_articles + self._global_articles
-        all_articles.sort(key=lambda x: x.get("published_ts", 0), reverse=True)
-        return all_articles[:limit]
+    def get_latest(self, limit: int = 30) -> list[dict]:
+        combined = self._crypto_articles + self._global_articles
+        combined.sort(key=lambda x: x["published_ts"], reverse=True)
+        return combined[:limit]
+
+
+# ── AI Processing (Gemini) ────────────────────────────────────────────────────
+
+async def _ai_process(articles: list[dict], category: str) -> list[dict]:
+    """Terjemah judul ke Indonesia + buat 3 bullet Bloomberg-style via Gemini."""
+    if not articles:
+        return articles
+
+    input_text = "\n---\n".join(
+        f"[{i}] TITLE: {a['title']}\nDESC: {a['summary'][:400]}"
+        for i, a in enumerate(articles)
+    )
+
+    if category == "crypto":
+        prompt = f"""Kamu adalah EDITOR KEPALA di CoinDesk/The Block versi Indonesia, standar Bloomberg Terminal.
+
+STANDAR JUDUL:
+- Wajib ada angka (harga, %, volume) jika tersedia
+- Kata kerja spesifik: "melonjak", "anjlok", "memangkas", bukan "mengalami"
+- Pertahankan istilah: BTC, ETH, DeFi, NFT, TVL, staking, halving
+
+Proses {len(articles)} berita kripto secara BATCH.
+Untuk SETIAP berita:
+1. Terjemahkan judul ke Bahasa Indonesia yang INFORMATIF dan PRESISI
+2. TEPAT 3 poin ringkasan. Format: • Fakta + angka + dampak (1-2 kalimat)
+
+Output JSON array TANPA teks lain:
+[{{"idx":0,"title":"judul","summary":"• Poin 1\\n• Poin 2\\n• Poin 3"}},...]
+
+Berita:
+{input_text}"""
+    else:
+        prompt = f"""Kamu adalah EDITOR KEPALA Bloomberg/Reuters versi Indonesia.
+
+STANDAR JUDUL:
+- Wajib ada angka jika tersedia. Subjek + kata kerja aktif spesifik.
+- Pertahankan nama: S&P 500, Nasdaq, Fed, ECB, BoJ, FTSE 100
+
+Proses {len(articles)} berita ekonomi global secara BATCH.
+Untuk SETIAP berita:
+1. Terjemahkan judul ke Bahasa Indonesia yang INFORMATIF dan PRESISI
+2. TEPAT 3 poin ringkasan. Format: • Fakta + angka + dampak (1-2 kalimat)
+
+Output JSON array TANPA teks lain:
+[{{"idx":0,"title":"judul","summary":"• Poin 1\\n• Poin 2\\n• Poin 3"}},...]
+
+Berita:
+{input_text}"""
+
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            r = await client.post(
+                "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {GEMINI_API_KEY}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": "gemini-2.5-flash",
+                    "messages": [{"role": "user", "content": prompt}],
+                    "max_tokens": 350 * len(articles),
+                },
+            )
+            if r.status_code != 200:
+                print(f"[News] Gemini HTTP {r.status_code}: {r.text[:200]}")
+                return articles
+
+            data   = r.json()
+            raw    = data["choices"][0]["message"]["content"].strip()
+            clean  = re.sub(r'```json\n?', '', raw).replace('```', '').strip()
+            parsed = json.loads(clean)
+
+            for item in parsed:
+                idx = item.get("idx", -1)
+                if 0 <= idx < len(articles):
+                    articles[idx]["title"]   = item["title"]
+                    articles[idx]["summary"] = item["summary"]
+
+            print(f"[News] Gemini OK — {len(articles)} {category} diproses")
+    except Exception as e:
+        print(f"[News] Gemini error: {e}")
+
+    return articles
+
+
+# ── RSS Parsing (regex, handles CDATA) ───────────────────────────────────────
+
+def _parse_rss(xml_text: str, source_name: str, category: str) -> list[dict]:
+    articles = []
+    _item  = re.compile(r'<item>([\s\S]*?)</item>')
+    _title = re.compile(r'<title[^>]*>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?</title>')
+    _link  = re.compile(r'<link[^>]*>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?</link>')
+    _guid  = re.compile(r'<guid[^>]*isPermaLink="true"[^>]*>([\s\S]*?)</guid>')
+    _desc  = re.compile(r'<description[^>]*>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?</description>')
+    _date  = re.compile(r'<pubDate[^>]*>([\s\S]*?)</pubDate>')
+
+    for m in _item.finditer(xml_text):
+        item  = m.group(1)
+        tm    = _title.search(item)
+        lm    = _link.search(item) or _guid.search(item)
+        dm    = _desc.search(item)
+        pm    = _date.search(item)
+
+        if not tm or not lm:
+            continue
+
+        title = tm.group(1).strip()
+        url   = lm.group(1).strip()
+        if not url.startswith("http"):
+            continue
+
+        desc = ""
+        if dm:
+            desc = re.sub(r'<[^>]+>', '', dm.group(1)).strip()[:800]
+
+        pub = _parse_date(pm.group(1).strip() if pm else None)
+        articles.append({
+            "title":        title,
+            "url":          url,
+            "summary":      desc,
+            "source":       source_name,
+            "category":     category,
+            "published":    pub.isoformat() if pub else datetime.now(timezone.utc).isoformat(),
+            "published_ts": pub.timestamp() if pub else datetime.now(timezone.utc).timestamp(),
+        })
+        if len(articles) >= 20:
+            break
+
+    return articles
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -170,13 +284,12 @@ class NewsFetcher:
 def _parse_date(date_str: Optional[str]) -> Optional[datetime]:
     if not date_str:
         return None
-    formats = [
+    for fmt in [
         "%a, %d %b %Y %H:%M:%S %z",
         "%a, %d %b %Y %H:%M:%S GMT",
         "%Y-%m-%dT%H:%M:%S%z",
         "%Y-%m-%dT%H:%M:%SZ",
-    ]
-    for fmt in formats:
+    ]:
         try:
             return datetime.strptime(date_str.strip(), fmt)
         except ValueError:
