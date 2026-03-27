@@ -31,17 +31,31 @@
       </button>
     </div>
     <span class="text-gray-600">|</span>
-    {% if bot_running %}
-      <span class="bg-green-500 text-black text-xs font-bold px-3 py-1 rounded-full">🟢 BOT RUNNING</span>
-      <button onclick="botAction('stop')"
-              class="bg-red-600 hover:bg-red-500 text-white text-xs px-3 py-2 rounded-lg">Stop Bot</button>
+    {% if active_exchange == 'bybit' %}
+      {% if bybit_bot_running %}
+        <span class="bg-green-500 text-black text-xs font-bold px-3 py-1 rounded-full">🟢 BOT RUNNING</span>
+        <button onclick="botAction('bybit/bot/stop')"
+                class="bg-red-600 hover:bg-red-500 text-white text-xs px-3 py-2 rounded-lg">Stop Bot</button>
+      {% else %}
+        <span class="bg-gray-700 text-gray-300 text-xs font-bold px-3 py-1 rounded-full">⚫ BOT STOPPED</span>
+        <button onclick="botAction('bybit/bot/start')"
+                class="bg-green-600 hover:bg-green-500 text-white text-xs px-3 py-2 rounded-lg">Start Bot</button>
+      {% endif %}
+      <button onclick="botAction('bybit/bot/close-all')"
+              class="bg-orange-600 hover:bg-orange-500 text-white text-xs px-3 py-2 rounded-lg">Close All</button>
     {% else %}
-      <span class="bg-gray-700 text-gray-300 text-xs font-bold px-3 py-1 rounded-full">⚫ BOT STOPPED</span>
-      <button onclick="botAction('start')"
-              class="bg-green-600 hover:bg-green-500 text-white text-xs px-3 py-2 rounded-lg">Start Bot</button>
+      {% if bot_running %}
+        <span class="bg-green-500 text-black text-xs font-bold px-3 py-1 rounded-full">🟢 BOT RUNNING</span>
+        <button onclick="botAction('bot/stop')"
+                class="bg-red-600 hover:bg-red-500 text-white text-xs px-3 py-2 rounded-lg">Stop Bot</button>
+      {% else %}
+        <span class="bg-gray-700 text-gray-300 text-xs font-bold px-3 py-1 rounded-full">⚫ BOT STOPPED</span>
+        <button onclick="botAction('bot/start')"
+                class="bg-green-600 hover:bg-green-500 text-white text-xs px-3 py-2 rounded-lg">Start Bot</button>
+      {% endif %}
+      <button onclick="botAction('bot/close-all')"
+              class="bg-orange-600 hover:bg-orange-500 text-white text-xs px-3 py-2 rounded-lg">Close All</button>
     {% endif %}
-    <button onclick="botAction('close-all')"
-            class="bg-orange-600 hover:bg-orange-500 text-white text-xs px-3 py-2 rounded-lg">Close All</button>
   </div>
 </div>
 
@@ -203,8 +217,8 @@ async function switchExchange(ex) {
 
 // ── Bot Actions ────────────────────────────────────────────────────────────
 async function botAction(action) {
-  if (action === 'close-all' && !confirm('Tutup semua posisi?')) return;
-  await fetch(`/api/bot/${action}`, {method: 'POST', credentials: 'same-origin'});
+  if (action.endsWith('close-all') && !confirm('Tutup semua posisi?')) return;
+  await fetch(`/api/${action}`, {method: 'POST', credentials: 'same-origin'});
   location.reload();
 }
 

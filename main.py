@@ -14,12 +14,16 @@ from sqlalchemy import select
 
 import config
 from exchanges.hyperliquid import HyperliquidClient
+from exchanges.bybit import BybitClient
 from strategy.bollinger import BollingerStrategy
 from risk.manager import RiskManager
 from notifications.telegram import TelegramNotifier
 from database.models import Trade, init_db, AsyncSessionLocal
-from dashboard.app import app as dashboard_app, set_bot_runner, set_news_fetcher
+from dashboard.app import app as dashboard_app, set_bot_runner, set_bybit_bot_runner, set_news_fetcher
 from news.fetcher import NewsFetcher
+
+# Konversi timeframe dashboard (1m, 5m, 1h) → Bybit interval string
+_TF_MAP = {"1m":"1","3m":"3","5m":"5","15m":"15","30m":"30","1h":"60","2h":"120","4h":"240","1d":"D","1w":"W"}
 
 
 class BotRunner:
@@ -195,6 +199,208 @@ class BotRunner:
         )
 
 
+class BybitBotRunner:
+    """Bot trading loop untuk Bybit Perpetual Futures."""
+
+    def __init__(self):
+        self.bybit      = BybitClient()
+        self.strategy   = BollingerStrategy(config.BYBIT_BOT_PERSONA)
+        self.risk       = RiskManager()
+        self.telegram   = TelegramNotifier()
+        self.is_running = False
+        self._task      = None
+        self._active_trades: dict[str, int] = {}   # symbol → trade DB id
+
+    def is_configured(self) -> bool:
+        return bool(config.BYBIT_API_KEY and config.BYBIT_API_SECRET)
+
+    async def start(self):
+        if self.is_running:
+            return
+        self.is_running = True
+        self.strategy.set_persona(config.BYBIT_BOT_PERSONA)
+        pair   = config.BYBIT_BOT_PAIR + "USDT"
+        tf     = config.BYBIT_BOT_TIMEFRAME
+        lev    = config.BYBIT_BOT_LEVERAGE
+        size   = config.BYBIT_BOT_SIZE
+        await self.telegram.notify_bot_status("START", f"[Bybit] {pair} | {tf} | x{lev} | ${size}/trade")
+        self._task = asyncio.create_task(self._trading_loop())
+
+    async def stop(self):
+        self.is_running = False
+        if self._task:
+            self._task.cancel()
+        await self.telegram.notify_bot_status("STOP", "[Bybit] Dihentikan manual")
+
+    async def close_all_positions(self):
+        await self.telegram.notify_risk_alert("[Bybit] Menutup semua posisi...")
+        results = await self.bybit.close_all_positions()
+        await self.telegram.notify_risk_alert(f"[Bybit] {len(results)} posisi ditutup.")
+
+    # ── Trading loop ──────────────────────────────────────────────────────────
+
+    async def _trading_loop(self):
+        symbol = config.BYBIT_BOT_PAIR + "USDT"
+        print(f"[BybitBot] Loop dimulai — {symbol} @ {config.BYBIT_BOT_TIMEFRAME}")
+        while self.is_running:
+            try:
+                await self._tick()
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                print(f"[BybitBot] Error: {e}")
+                await self.telegram.notify_risk_alert(f"[Bybit] Error: {e}")
+            await asyncio.sleep(config.POLL_INTERVAL)
+
+    async def _tick(self):
+        symbol   = config.BYBIT_BOT_PAIR + "USDT"
+        interval = _TF_MAP.get(config.BYBIT_BOT_TIMEFRAME, "60")
+
+        # 1. Ambil candle
+        raw = await self.bybit.get_candles(symbol, interval, limit=200)
+        if not raw:
+            return
+
+        # Bybit returns newest first: [timestamp, open, high, low, close, volume, ...]
+        candles = [
+            {"time": int(c[0]), "open": float(c[1]), "high": float(c[2]),
+             "low": float(c[3]), "close": float(c[4]), "volume": float(c[5])}
+            for c in reversed(raw)
+        ]
+
+        # 2. Analisis
+        signal = self.strategy.analyze(candles)
+        print(f"[BybitBot] Signal: {signal.action} | {signal.reason[:60]}")
+
+        # 3. Monitor posisi aktif (deteksi kalau sudah ditutup TP/SL)
+        await self._monitor_positions(symbol, signal)
+
+        # 4. Buka trade baru
+        if signal.action in ("BUY", "SELL") and symbol not in self._active_trades:
+            await self._open_trade(symbol, signal)
+
+    async def _open_trade(self, symbol: str, signal):
+        try:
+            bal  = await self.bybit.get_balance()
+            usdt = bal.get("USDT", 0.0)
+        except Exception as e:
+            print(f"[BybitBot] balance error: {e}")
+            return
+
+        can_trade, reason = self.risk.can_open_trade(usdt)
+        if not can_trade:
+            print(f"[BybitBot] Skip: {reason}")
+            return
+
+        side     = "Buy" if signal.action == "BUY" else "Sell"
+        db_side  = "LONG" if side == "Buy" else "SHORT"
+        price    = signal.entry_price
+        leverage = config.BYBIT_BOT_LEVERAGE
+        size_usd = config.BYBIT_BOT_SIZE
+
+        # Leverage set dulu
+        try:
+            await self.bybit.set_leverage(symbol, leverage)
+        except Exception:
+            pass
+
+        # TP/SL dari persona (atau override dari settings)
+        persona = self.strategy.persona
+        tp_pct  = config.BYBIT_BOT_TP or persona["tp_pct"]
+        sl_pct  = config.BYBIT_BOT_SL or persona["sl_pct"]
+        if side == "Buy":
+            tp_price = round(price * (1 + tp_pct / 100), 2)
+            sl_price = round(price * (1 - sl_pct / 100), 2)
+        else:
+            tp_price = round(price * (1 - tp_pct / 100), 2)
+            sl_price = round(price * (1 + sl_pct / 100), 2)
+
+        # Qty = modal × leverage / harga
+        qty = round(size_usd * leverage / price, 3)
+
+        try:
+            result = await self.bybit.place_order(symbol, side, qty, tp=tp_price, sl=sl_price)
+            if result.get("retCode") != 0:
+                raise RuntimeError(result.get("retMsg"))
+            print(f"[BybitBot] Order OK: {side} {symbol} qty={qty} TP={tp_price} SL={sl_price}")
+        except Exception as e:
+            print(f"[BybitBot] Order gagal: {e}")
+            await self.telegram.notify_risk_alert(f"[Bybit] Order gagal: {e}")
+            return
+
+        async with AsyncSessionLocal() as db:
+            trade = Trade(
+                pair=symbol, side=db_side, entry_price=price,
+                size_usdc=size_usd, leverage=leverage, status="open",
+                bb_width=signal.bb_width, adx_value=signal.adx,
+                market_condition=signal.market_condition,
+            )
+            db.add(trade)
+            await db.commit()
+            await db.refresh(trade)
+            self._active_trades[symbol] = trade.id
+
+        self.risk.record_trade_opened()
+        await self.telegram.notify_trade_opened(db_side, symbol, price, tp_price, sl_price, qty)
+
+    async def _monitor_positions(self, symbol: str, signal):
+        if symbol not in self._active_trades:
+            return
+
+        try:
+            positions = await self.bybit.get_positions()
+        except Exception:
+            return
+
+        pos_map = {p["symbol"]: p for p in positions}
+
+        if symbol not in pos_map:
+            # Posisi sudah ditutup oleh Bybit (TP/SL hit atau manual)
+            trade_id = self._active_trades.pop(symbol, None)
+            self.risk.record_trade_closed()
+            if trade_id:
+                async with AsyncSessionLocal() as db:
+                    trade = await db.get(Trade, trade_id)
+                    if trade and trade.status == "open":
+                        trade.status      = "closed"
+                        trade.close_reason = "bybit_closed"
+                        trade.closed_at   = datetime.now(timezone.utc)
+                        await db.commit()
+            return
+
+        # Posisi masih ada — cek apakah market berubah trending/volatile
+        pos = pos_map[symbol]
+        if signal.market_condition != "ranging":
+            try:
+                await self.bybit.close_position(symbol, pos["side"], pos["size"])
+                print(f"[BybitBot] Posisi ditutup karena market {signal.market_condition}")
+            except Exception as e:
+                print(f"[BybitBot] close error: {e}")
+                return
+
+            pnl      = pos["unrealized_pnl"]
+            cur_price = pos["mark_price"]
+            trade_id  = self._active_trades.pop(symbol, None)
+            self.risk.record_trade_closed()
+            if pnl < 0:
+                self.risk.record_loss(abs(pnl))
+            if trade_id:
+                async with AsyncSessionLocal() as db:
+                    trade = await db.get(Trade, trade_id)
+                    if trade and trade.status == "open":
+                        trade.exit_price   = cur_price
+                        trade.pnl_usdc     = pnl
+                        trade.pnl_pct      = (pnl / trade.size_usdc * 100) if trade.size_usdc else 0
+                        trade.status       = "closed"
+                        trade.close_reason = f"market_{signal.market_condition}"
+                        trade.closed_at    = datetime.now(timezone.utc)
+                        await db.commit()
+            await self.telegram.notify_trade_closed(
+                pos["side"], symbol, pos["entry_price"], cur_price, pnl,
+                f"market_{signal.market_condition}"
+            )
+
+
 async def _calc_stats(db: AsyncSession) -> dict:
     from sqlalchemy import func
     today = datetime.now(timezone.utc).date()
@@ -233,15 +439,26 @@ async def daily_report_scheduler(runner: BotRunner):
 async def main():
     await init_db()
 
+    # ── Hyperliquid bot ───────────────────────────────────────────────────────
     runner = BotRunner()
     set_bot_runner(runner)
 
     if not runner.hl_client.is_configured():
         print("[Bot] HL_WALLET_ADDRESS / HL_PRIVATE_KEY belum di-set. "
-              "Dashboard tetap berjalan, bot tidak akan trading.")
+              "Dashboard tetap berjalan, bot HL tidak akan trading.")
     else:
         if config.BOT_ENABLED:
             await runner.start()
+
+    # ── Bybit bot ─────────────────────────────────────────────────────────────
+    bybit_runner = BybitBotRunner()
+    set_bybit_bot_runner(bybit_runner)
+
+    if not bybit_runner.is_configured():
+        print("[BybitBot] BYBIT_API_KEY / BYBIT_API_SECRET belum di-set. Bot Bybit tidak aktif.")
+    else:
+        if config.BOT_ENABLED:
+            await bybit_runner.start()
 
     # Jalankan news fetcher (poll RSS setiap 60 detik)
     news_fetcher = NewsFetcher()

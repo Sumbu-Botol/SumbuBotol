@@ -21,13 +21,18 @@ templates  = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 serializer = URLSafeTimedSerializer(config.DASHBOARD_PASSWORD)
 
 # Global references (diset dari main.py)
-_bot_runner   = None
+_bot_runner        = None
+_bybit_bot_runner  = None
 _news_fetcher: NewsFetcher = None
 _ws_clients: list[WebSocket] = []
 
 def set_bot_runner(runner):
     global _bot_runner
     _bot_runner = runner
+
+def set_bybit_bot_runner(runner):
+    global _bybit_bot_runner
+    _bybit_bot_runner = runner
 
 def set_news_fetcher(fetcher: NewsFetcher):
     global _news_fetcher
@@ -102,19 +107,21 @@ async def dashboard(request: Request, db: AsyncSession = Depends(get_db)):
     open_positions = await _get_open_positions()
     recent_trades  = await _get_recent_trades(db, limit=10)
     stats          = await _get_stats(db)
-    bot_running    = _bot_runner.is_running if _bot_runner else False
+    bot_running       = _bot_runner.is_running if _bot_runner else False
+    bybit_bot_running = _bybit_bot_runner.is_running if _bybit_bot_runner else False
 
     return templates.TemplateResponse("dashboard.html", {
-        "request":         request,
-        "balance":         balance,
-        "open_positions":  open_positions,
-        "recent_trades":   recent_trades,
-        "stats":           stats,
-        "bot_running":     bot_running,
-        "active_persona":  get_persona(config.ACTIVE_PERSONA),
-        "active_exchange": config.ACTIVE_EXCHANGE,
-        "config":          config,
-        "now":             datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%M UTC"),
+        "request":           request,
+        "balance":           balance,
+        "open_positions":    open_positions,
+        "recent_trades":     recent_trades,
+        "stats":             stats,
+        "bot_running":       bot_running,
+        "bybit_bot_running": bybit_bot_running,
+        "active_persona":    get_persona(config.ACTIVE_PERSONA),
+        "active_exchange":   config.ACTIVE_EXCHANGE,
+        "config":            config,
+        "now":               datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%M UTC"),
     })
 
 
@@ -459,6 +466,34 @@ async def bybit_order(request: Request):
     except Exception as e:
         print(f"[Bybit] order error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/bybit/bot/start")
+async def bybit_bot_start(request: Request):
+    if not check_auth(request):
+        raise HTTPException(status_code=401)
+    if _bybit_bot_runner:
+        _bybit_bot_runner.strategy.set_persona(config.BYBIT_BOT_PERSONA)
+        await _bybit_bot_runner.start()
+    return {"status": "started"}
+
+
+@app.post("/api/bybit/bot/stop")
+async def bybit_bot_stop(request: Request):
+    if not check_auth(request):
+        raise HTTPException(status_code=401)
+    if _bybit_bot_runner:
+        await _bybit_bot_runner.stop()
+    return {"status": "stopped"}
+
+
+@app.post("/api/bybit/bot/close-all")
+async def bybit_bot_close_all(request: Request):
+    if not check_auth(request):
+        raise HTTPException(status_code=401)
+    if _bybit_bot_runner:
+        await _bybit_bot_runner.close_all_positions()
+    return {"status": "closing_all"}
+
 
 @app.post("/api/exchange/switch")
 async def exchange_switch(request: Request):
