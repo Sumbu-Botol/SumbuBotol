@@ -34,6 +34,14 @@ def _headers(timestamp: str, signature: str) -> dict:
     }
 
 
+def _client(**kwargs) -> httpx.AsyncClient:
+    """Buat httpx client, pakai proxy kalau BYBIT_PROXY diset."""
+    proxy = config.BYBIT_PROXY
+    if proxy:
+        return httpx.AsyncClient(proxy=proxy, timeout=15, **kwargs)
+    return httpx.AsyncClient(timeout=15, **kwargs)
+
+
 class BybitClient:
 
     # ── Balance ───────────────────────────────────────────────────────────────
@@ -46,7 +54,7 @@ class BybitClient:
         ts  = str(int(time.time() * 1000))
         qs  = "accountType=UNIFIED"
         sig = _sign(config.BYBIT_API_SECRET, ts, qs)
-        async with httpx.AsyncClient(timeout=10) as client:
+        async with _client() as client:
             r = await client.get(
                 f"{BASE_URL}/v5/account/wallet-balance?{qs}",
                 headers=_headers(ts, sig),
@@ -77,7 +85,7 @@ class BybitClient:
         if settle != "ALL":
             qs += f"&settleCoin={settle}"
         sig = _sign(config.BYBIT_API_SECRET, ts, qs)
-        async with httpx.AsyncClient(timeout=10) as client:
+        async with _client() as client:
             r = await client.get(
                 f"{BASE_URL}/v5/position/list?{qs}",
                 headers=_headers(ts, sig),
@@ -148,7 +156,7 @@ class BybitClient:
         import json
         payload = json.dumps(body)
         sig = _sign(config.BYBIT_API_SECRET, ts, payload)
-        async with httpx.AsyncClient(timeout=10) as client:
+        async with _client() as client:
             r = await client.post(
                 f"{BASE_URL}/v5/order/create",
                 headers=_headers(ts, sig),
@@ -194,7 +202,7 @@ class BybitClient:
         import json
         payload = json.dumps(body)
         sig = _sign(config.BYBIT_API_SECRET, ts, payload)
-        async with httpx.AsyncClient(timeout=10) as client:
+        async with _client() as client:
             r = await client.post(
                 f"{BASE_URL}/v5/position/trading-stop",
                 headers=_headers(ts, sig),
@@ -215,7 +223,7 @@ class BybitClient:
         }
         payload = json.dumps(body)
         sig = _sign(config.BYBIT_API_SECRET, ts, payload)
-        async with httpx.AsyncClient(timeout=10) as client:
+        async with _client() as client:
             r = await client.post(
                 f"{BASE_URL}/v5/position/set-leverage",
                 headers=_headers(ts, sig),
@@ -233,7 +241,7 @@ class BybitClient:
         qs  = f"category=linear&symbol={symbol}&interval={interval}&limit={limit}"
         ts  = str(int(time.time() * 1000))
         sig = _sign(config.BYBIT_API_SECRET, ts, qs)
-        async with httpx.AsyncClient(timeout=10) as client:
+        async with _client() as client:
             r = await client.get(
                 f"{BASE_URL}/v5/market/kline?{qs}",
                 headers=_headers(ts, sig),
@@ -252,7 +260,7 @@ class BybitClient:
             qs += f"&symbol={symbols[0]}"
         ts  = str(int(time.time() * 1000))
         sig = _sign(config.BYBIT_API_SECRET, ts, qs)
-        async with httpx.AsyncClient(timeout=10) as client:
+        async with _client() as client:
             r = await client.get(
                 f"{BASE_URL}/v5/market/tickers?{qs}",
                 headers=_headers(ts, sig),

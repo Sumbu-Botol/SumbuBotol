@@ -11,6 +11,9 @@ ACTIVE_EXCHANGE  = os.getenv("ACTIVE_EXCHANGE", "bybit")
 BYBIT_API_KEY    = os.getenv("BYBIT_API_KEY", "")
 BYBIT_API_SECRET = os.getenv("BYBIT_API_SECRET", "")
 BYBIT_MAINNET    = True   # selalu mainnet
+# Proxy untuk bypass Bybit CloudFront block pada cloud server IP
+# Format: "http://user:pass@host:port" atau "socks5://user:pass@host:port"
+BYBIT_PROXY      = os.getenv("BYBIT_PROXY", "")
 
 # ──────────────────────────────────────────
 # HYPERLIQUID
