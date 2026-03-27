@@ -272,8 +272,8 @@ async function loadBybit() {
       }
     }
 
-    // Balance update
-    if (bal && (bal.USDT !== undefined || bal.USDC !== undefined)) {
+    // Balance update — hanya kalau tidak ada error (jangan timpa dengan $0.00)
+    if (bal && !bal.error && (bal.USDT || bal.USDC)) {
       const balLabel = `USDT: $${(bal.USDT || 0).toFixed(2)} · USDC: $${(bal.USDC || 0).toFixed(2)}`;
       document.getElementById('bybitBalanceLabel').textContent = balLabel;
     }
