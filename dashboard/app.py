@@ -398,17 +398,6 @@ async def bybit_positions(request: Request, settle: str = "ALL"):
         print(f"[Bybit] positions error: {e}")
         return {"error": str(e), "positions": []}
 
-@app.get("/api/bybit/pnl-summary")
-async def bybit_pnl_summary(request: Request):
-    if not check_auth(request):
-        raise HTTPException(status_code=401)
-    if _bybit_not_configured():
-        return {"error": "BYBIT_API_KEY not configured"}
-    try:
-        return await _bybit().get_closed_pnl_all()
-    except Exception as e:
-        print(f"[Bybit] pnl-summary error: {e}")
-        return {"error": str(e)}
 
 @app.post("/api/bybit/close")
 async def bybit_close(request: Request):
