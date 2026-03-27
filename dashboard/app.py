@@ -262,6 +262,53 @@ def _bybit():
 def _bybit_not_configured() -> bool:
     return not config.BYBIT_API_KEY or not config.BYBIT_API_SECRET
 
+@app.get("/api/bybit/test")
+async def bybit_test(request: Request):
+    """Debug endpoint — cek apakah Bybit API terhubung dengan benar."""
+    if not check_auth(request):
+        raise HTTPException(status_code=401)
+    import httpx, hashlib, hmac as _hmac, time as _time
+    key    = config.BYBIT_API_KEY
+    secret = config.BYBIT_API_SECRET
+    result: dict = {
+        "api_key_set":    bool(key),
+        "api_secret_set": bool(secret),
+        "api_key_prefix": key[:6] + "..." if len(key) > 6 else key,
+    }
+    if not key or not secret:
+        result["error"] = "BYBIT_API_KEY / BYBIT_API_SECRET belum diset di Railway"
+        return result
+    try:
+        ts  = str(int(_time.time() * 1000))
+        qs  = "accountType=UNIFIED"
+        msg = ts + key + "5000" + qs
+        sig = _hmac.new(secret.encode(), msg.encode(), hashlib.sha256).hexdigest()
+        headers = {
+            "X-BAPI-API-KEY": key, "X-BAPI-TIMESTAMP": ts,
+            "X-BAPI-SIGN": sig, "X-BAPI-RECV-WINDOW": "5000",
+        }
+        async with httpx.AsyncClient(timeout=10) as client:
+            r = await client.get("https://api.bybit.com/v5/account/wallet-balance?" + qs, headers=headers)
+            raw = r.json()
+        result["http_status"]  = r.status_code
+        result["bybit_retCode"] = raw.get("retCode")
+        result["bybit_retMsg"]  = raw.get("retMsg")
+        # Posisi
+        qs2  = "category=linear&limit=50"
+        msg2 = ts + key + "5000" + qs2
+        sig2 = _hmac.new(secret.encode(), msg2.encode(), hashlib.sha256).hexdigest()
+        headers["X-BAPI-SIGN"] = sig2
+        async with httpx.AsyncClient(timeout=10) as client:
+            r2 = await client.get("https://api.bybit.com/v5/position/list?" + qs2, headers=headers)
+            raw2 = r2.json()
+        result["position_retCode"] = raw2.get("retCode")
+        result["position_retMsg"]  = raw2.get("retMsg")
+        result["position_count"]   = len([p for p in raw2.get("result", {}).get("list", []) if float(p.get("size", 0)) > 0])
+        result["position_raw_count"] = len(raw2.get("result", {}).get("list", []))
+    except Exception as e:
+        result["exception"] = str(e)
+    return result
+
 @app.get("/api/bybit/balance")
 async def bybit_balance(request: Request):
     if not check_auth(request):
