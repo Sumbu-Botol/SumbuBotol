@@ -240,21 +240,25 @@ async function loadBybit() {
     const pos = await posResp.json();
     const bal = await balResp.json();
     // pos bisa array (sukses) atau {error, positions:[]} (configured tapi error)
+    let newPositions = null;
     if (Array.isArray(pos)) {
-      _bybitPositions = pos;
+      newPositions = pos;
     } else if (Array.isArray(pos.positions)) {
-      _bybitPositions = pos.positions;
+      newPositions = pos.positions;
       if (pos.error) console.warn('[Bybit]', pos.error);
-    } else {
-      _bybitPositions = [];
     }
-    const balLabel = `USDT: $${(bal.USDT || 0).toFixed(2)} · USDC: $${(bal.USDC || 0).toFixed(2)}`;
-    document.getElementById('bybitBalanceLabel').textContent = balLabel;
-    renderBybitPositions();
+    // Hanya update UI kalau dapat data valid — jangan reset kalau gagal
+    if (newPositions !== null) {
+      _bybitPositions = newPositions;
+      renderBybitPositions();
+    }
+    // Balance selalu update kalau ada
+    if (bal && !bal.error) {
+      const balLabel = `USDT: $${(bal.USDT || 0).toFixed(2)} · USDC: $${(bal.USDC || 0).toFixed(2)}`;
+      document.getElementById('bybitBalanceLabel').textContent = balLabel;
+    }
   } catch(e) {
-    console.error('[Bybit] loadBybit error:', e);
-    document.getElementById('bybitPositions').innerHTML =
-      '<p class="text-red-400 text-xs">Gagal load posisi: ' + e.message + '</p>';
+    console.error('[Bybit] refresh error (data lama tetap tampil):', e);
   }
 }
 
