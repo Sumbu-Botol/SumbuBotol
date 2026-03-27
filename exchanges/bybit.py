@@ -148,7 +148,8 @@ class BybitClient:
 
         while page < MAX_PAGES:
             ts  = str(int(time.time() * 1000))
-            qs  = "category=linear&limit=100"
+            # startTime = 1 Jan 2021, ambil data paling lama yang Bybit simpan
+            qs  = "category=linear&limit=100&startTime=1609459200000"
             if cursor:
                 qs += f"&cursor={cursor}"
             sig = _sign(config.BYBIT_API_SECRET, ts, qs)
