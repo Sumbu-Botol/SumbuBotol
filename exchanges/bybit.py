@@ -10,6 +10,7 @@ Autentikasi: HMAC-SHA256, parameter di query string (GET) atau body JSON (POST).
 import hashlib
 import hmac
 import time
+import asyncio
 import httpx
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
@@ -51,17 +52,35 @@ class BybitClient:
         """
         Return {'USDT': float, 'USDC': float}
         Pakai accountType=UNIFIED (mendukung linear perp USDT & USDC).
+        Retry 3x dengan jeda 2 detik kalau kena 403/timeout.
         """
-        ts  = str(int(time.time() * 1000))
-        qs  = "accountType=UNIFIED"
-        sig = _sign(config.BYBIT_API_SECRET, ts, qs)
-        async with _client() as client:
-            r = await client.get(
-                f"{_base_url()}/v5/account/wallet-balance?{qs}",
-                headers=_headers(ts, sig),
-            )
-        if not r.is_success:
-            raise RuntimeError(f"HTTP {r.status_code}")
+        last_err = None
+        for attempt in range(3):
+            if attempt:
+                await asyncio.sleep(2)
+            try:
+                ts  = str(int(time.time() * 1000))
+                qs  = "accountType=UNIFIED"
+                sig = _sign(config.BYBIT_API_SECRET, ts, qs)
+                async with _client() as client:
+                    r = await client.get(
+                        f"{_base_url()}/v5/account/wallet-balance?{qs}",
+                        headers=_headers(ts, sig),
+                    )
+                if r.status_code == 403:
+                    last_err = RuntimeError("HTTP 403")
+                    continue
+                if not r.is_success:
+                    raise RuntimeError(f"HTTP {r.status_code}")
+                break
+            except RuntimeError as e:
+                last_err = e
+                continue
+            except Exception as e:
+                last_err = e
+                continue
+        else:
+            raise last_err or RuntimeError("get_balance gagal setelah 3 percobaan")
         data = r.json()
         if data.get("retCode") != 0:
             raise RuntimeError(f"Bybit error {data.get('retCode')}: {data.get('retMsg')}")
