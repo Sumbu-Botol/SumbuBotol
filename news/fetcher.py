@@ -14,30 +14,33 @@ import hashlib
 import os
 from datetime import datetime, timezone
 from typing import Optional
+from sqlalchemy import select, desc
+from sqlalchemy.ext.asyncio import AsyncSession
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 
 # ── RSS Sources ───────────────────────────────────────────────────────────────
 
-# interval=0 → tiap siklus, interval=300 → setiap 5 menit (hindari rate-limit)
+# interval: detik minimum antar fetch per sumber
+# Bloomberg/WSJ/FT: 900s (15 menit) — hindari rate-limit dari IP tetap Railway
 CRYPTO_SOURCES = [
-    {"name": "CoinDesk",      "url": "https://www.coindesk.com/arc/outboundfeeds/rss/",  "interval": 0},
-    {"name": "CoinTelegraph", "url": "https://cointelegraph.com/rss",                    "interval": 0},
-    {"name": "Decrypt",       "url": "https://decrypt.co/feed",                          "interval": 0},
-    {"name": "The Block",     "url": "https://www.theblock.co/rss.xml",                  "interval": 0},
+    {"name": "CoinDesk",      "url": "https://www.coindesk.com/arc/outboundfeeds/rss/",  "interval": 60},
+    {"name": "CoinTelegraph", "url": "https://cointelegraph.com/rss",                    "interval": 60},
+    {"name": "Decrypt",       "url": "https://decrypt.co/feed",                          "interval": 60},
+    {"name": "The Block",     "url": "https://www.theblock.co/rss.xml",                  "interval": 60},
 ]
 
 GLOBAL_SOURCES = [
-    {"name": "Bloomberg", "url": "https://feeds.bloomberg.com/markets/news.rss",                       "interval": 300},
-    {"name": "Bloomberg", "url": "https://feeds.bloomberg.com/economics/news.rss",                     "interval": 300},
-    {"name": "WSJ",       "url": "https://feeds.a.dj.com/rss/RSSMarketsMain.xml",                      "interval": 300},
-    {"name": "WSJ",       "url": "https://feeds.a.dj.com/rss/WSJcomUSBusiness.xml",                    "interval": 300},
-    {"name": "WSJ",       "url": "https://feeds.a.dj.com/rss/RSSWorldNews.xml",                        "interval": 300},
-    {"name": "Financial Times", "url": "https://www.ft.com/rss/home",                                  "interval": 300},
-    {"name": "CNBC",      "url": "https://www.cnbc.com/id/100003114/device/rss/rss.html",              "interval": 0},
-    {"name": "CNBC",      "url": "https://www.cnbc.com/id/10000664/device/rss/rss.html",               "interval": 0},
-    {"name": "Reuters",   "url": "https://www.reutersagency.com/feed/?best-topics=business-finance",   "interval": 0},
-    {"name": "Reuters",   "url": "https://www.reutersagency.com/feed/?best-topics=tech",               "interval": 0},
+    {"name": "Bloomberg", "url": "https://feeds.bloomberg.com/markets/news.rss",                       "interval": 900},
+    {"name": "Bloomberg", "url": "https://feeds.bloomberg.com/economics/news.rss",                     "interval": 900},
+    {"name": "WSJ",       "url": "https://feeds.a.dj.com/rss/RSSMarketsMain.xml",                      "interval": 900},
+    {"name": "WSJ",       "url": "https://feeds.a.dj.com/rss/WSJcomUSBusiness.xml",                    "interval": 900},
+    {"name": "WSJ",       "url": "https://feeds.a.dj.com/rss/RSSWorldNews.xml",                        "interval": 900},
+    {"name": "Financial Times", "url": "https://www.ft.com/rss/home",                                  "interval": 900},
+    {"name": "CNBC",      "url": "https://www.cnbc.com/id/100003114/device/rss/rss.html",              "interval": 60},
+    {"name": "CNBC",      "url": "https://www.cnbc.com/id/10000664/device/rss/rss.html",               "interval": 60},
+    {"name": "Reuters",   "url": "https://www.reutersagency.com/feed/?best-topics=business-finance",   "interval": 60},
+    {"name": "Reuters",   "url": "https://www.reutersagency.com/feed/?best-topics=tech",               "interval": 60},
 ]
 
 HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; NewsBot/1.0)"}
@@ -101,12 +104,61 @@ class NewsFetcher:
     def on_new_article(self, callback):
         self._callbacks.append(callback)
 
+    async def load_from_db(self):
+        """Load artikel dari SQLite saat startup — cegah hilang setelah redeploy."""
+        try:
+            from database.models import NewsArticle, AsyncSessionLocal
+            async with AsyncSessionLocal() as session:
+                result = await session.execute(
+                    select(NewsArticle)
+                    .order_by(desc(NewsArticle.published_ts))
+                    .limit(500)
+                )
+                rows = result.scalars().all()
+                for row in rows:
+                    self._seen_hashes.add(row.id)
+                    a = {
+                        "id": row.id, "title": row.title, "url": row.url,
+                        "summary": row.summary or "", "source": row.source,
+                        "category": row.category, "sub_category": row.sub_category or "Global",
+                        "published": row.published, "published_ts": row.published_ts,
+                    }
+                    if row.category == "crypto":
+                        self._crypto_articles.append(a)
+                    else:
+                        self._global_articles.append(a)
+                self._crypto_articles.sort(key=lambda x: x["published_ts"], reverse=True)
+                self._global_articles.sort(key=lambda x: x["published_ts"], reverse=True)
+                print(f"[News] DB loaded: {len(self._crypto_articles)} kripto, {len(self._global_articles)} global")
+        except Exception as e:
+            print(f"[News] DB load error: {e}")
+
+    async def _save_to_db(self, article: dict):
+        """Simpan artikel baru ke SQLite."""
+        try:
+            from database.models import NewsArticle, AsyncSessionLocal
+            async with AsyncSessionLocal() as session:
+                obj = NewsArticle(
+                    id=article["id"], title=article["title"], url=article["url"],
+                    summary=article.get("summary", ""), source=article["source"],
+                    category=article["category"], sub_category=article.get("sub_category"),
+                    published=article["published"], published_ts=article["published_ts"],
+                )
+                session.add(obj)
+                try:
+                    await session.commit()
+                except Exception:
+                    await session.rollback()
+        except Exception:
+            pass
+
     async def start(self, interval: int = 30):
         print(f"[News] Fetcher dimulai, poll setiap {interval}s")
         if GEMINI_API_KEY:
             print("[News] Gemini AI aktif — judul akan diterjemahkan + ringkasan Bloomberg")
         else:
             print("[News] Gemini tidak dikonfigurasi — tampilkan teks RSS mentah")
+        await self.load_from_db()
         while True:
             try:
                 await self._fetch_all()
@@ -155,9 +207,10 @@ class NewsFetcher:
         self._crypto_articles = self._crypto_articles[:200]
         self._global_articles = self._global_articles[:200]
 
-        # Broadcast ke WebSocket clients
+        # Simpan ke DB + broadcast ke WebSocket clients
         all_new = sorted(new_crypto + new_global, key=lambda x: x["published_ts"], reverse=True)
         for a in all_new:
+            await self._save_to_db(a)
             for cb in self._callbacks:
                 try:
                     await cb(a)

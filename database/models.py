@@ -61,6 +61,21 @@ class LearningLog(Base):
     created_at   = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
+class NewsArticle(Base):
+    __tablename__ = "news_articles"
+
+    id           = Column(String, primary_key=True)   # md5 hash of url
+    title        = Column(Text, nullable=False)
+    url          = Column(Text, nullable=False, unique=True)
+    summary      = Column(Text, nullable=True)
+    source       = Column(String, nullable=False)
+    category     = Column(String, nullable=False)     # crypto / global
+    sub_category = Column(String, nullable=True)
+    published    = Column(String, nullable=False)     # ISO string
+    published_ts = Column(Float, nullable=False)
+    created_at   = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
 async def init_db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
