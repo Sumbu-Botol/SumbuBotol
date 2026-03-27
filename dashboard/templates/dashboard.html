@@ -300,17 +300,11 @@ function renderBybitPositions() {
     <div class="border border-gray-700 rounded-xl p-4 mb-3 bg-gray-800/40">
 
       <!-- Baris 1: Symbol · Side · Badge · Leverage -->
-      <div class="flex items-center gap-2 mb-3">
+      <div class="flex items-center gap-2 mb-2 flex-wrap">
         <span class="font-bold text-white">${p.symbol}</span>
         <span class="font-bold text-sm ${sideColor}">${sideTxt}</span>
         <span class="px-1.5 py-0.5 rounded text-[10px] font-medium ${settleBadge}">${p.settle}</span>
         <span class="text-gray-500 text-xs">${p.leverage}x</span>
-        <div class="ml-auto flex gap-1.5">
-          <button onclick="openTpSl('${p.symbol}', ${p.tp_price}, ${p.sl_price})"
-                  class="bg-yellow-700 hover:bg-yellow-600 text-yellow-100 px-3 py-1 rounded-lg text-xs font-medium">TP/SL</button>
-          <button onclick="closePos('${p.symbol}', '${p.side}', ${p.size})"
-                  class="bg-red-800 hover:bg-red-700 text-red-100 px-3 py-1 rounded-lg text-xs font-medium">Tutup</button>
-        </div>
       </div>
 
       <!-- Baris 2: uPnL -->
@@ -345,6 +339,14 @@ function renderBybitPositions() {
           <div class="text-gray-500 mb-0.5">SL</div>
           <div class="text-red-400 font-medium">${p.sl_price ? '$' + p.sl_price.toFixed(2) : '—'}</div>
         </div>
+      </div>
+
+      <!-- Tombol aksi — full width di baris sendiri -->
+      <div class="flex gap-2 mt-3">
+        <button onclick="openTpSl('${p.symbol}', ${p.tp_price}, ${p.sl_price})"
+                class="flex-1 bg-yellow-700 hover:bg-yellow-600 text-yellow-100 py-2 rounded-lg text-sm font-medium">TP/SL</button>
+        <button onclick="closePos('${p.symbol}', '${p.side}', ${p.size})"
+                class="flex-1 bg-red-800 hover:bg-red-700 text-red-100 py-2 rounded-lg text-sm font-medium">Tutup</button>
       </div>
 
     </div>`;
