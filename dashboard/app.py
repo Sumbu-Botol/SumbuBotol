@@ -287,24 +287,38 @@ async def bybit_test(request: Request):
             "X-BAPI-API-KEY": key, "X-BAPI-TIMESTAMP": ts,
             "X-BAPI-SIGN": sig, "X-BAPI-RECV-WINDOW": "5000",
         }
-        async with httpx.AsyncClient(timeout=10) as client:
+        async with httpx.AsyncClient(timeout=15) as client:
             r = await client.get("https://api.bybit.com/v5/account/wallet-balance?" + qs, headers=headers)
+        result["balance_http_status"] = r.status_code
+        result["balance_raw_body"]    = r.text[:300]  # max 300 char untuk debug
+        try:
             raw = r.json()
-        result["http_status"]  = r.status_code
-        result["bybit_retCode"] = raw.get("retCode")
-        result["bybit_retMsg"]  = raw.get("retMsg")
-        # Posisi
+            result["bybit_retCode"] = raw.get("retCode")
+            result["bybit_retMsg"]  = raw.get("retMsg")
+        except Exception as je:
+            result["balance_json_error"] = str(je)
+
+        # Posisi — pakai timestamp baru
+        ts2  = str(int(_time.time() * 1000))
         qs2  = "category=linear&limit=50"
-        msg2 = ts + key + "5000" + qs2
+        msg2 = ts2 + key + "5000" + qs2
         sig2 = _hmac.new(secret.encode(), msg2.encode(), hashlib.sha256).hexdigest()
-        headers["X-BAPI-SIGN"] = sig2
-        async with httpx.AsyncClient(timeout=10) as client:
-            r2 = await client.get("https://api.bybit.com/v5/position/list?" + qs2, headers=headers)
+        headers2 = {
+            "X-BAPI-API-KEY": key, "X-BAPI-TIMESTAMP": ts2,
+            "X-BAPI-SIGN": sig2, "X-BAPI-RECV-WINDOW": "5000",
+        }
+        async with httpx.AsyncClient(timeout=15) as client:
+            r2 = await client.get("https://api.bybit.com/v5/position/list?" + qs2, headers=headers2)
+        result["position_http_status"] = r2.status_code
+        result["position_raw_body"]    = r2.text[:300]
+        try:
             raw2 = r2.json()
-        result["position_retCode"] = raw2.get("retCode")
-        result["position_retMsg"]  = raw2.get("retMsg")
-        result["position_count"]   = len([p for p in raw2.get("result", {}).get("list", []) if float(p.get("size", 0)) > 0])
-        result["position_raw_count"] = len(raw2.get("result", {}).get("list", []))
+            result["position_retCode"]     = raw2.get("retCode")
+            result["position_retMsg"]      = raw2.get("retMsg")
+            result["position_count"]       = len([p for p in raw2.get("result", {}).get("list", []) if float(p.get("size", 0)) > 0])
+            result["position_raw_count"]   = len(raw2.get("result", {}).get("list", []))
+        except Exception as je2:
+            result["position_json_error"] = str(je2)
     except Exception as e:
         result["exception"] = str(e)
     return result
