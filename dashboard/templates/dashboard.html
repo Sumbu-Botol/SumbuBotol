@@ -98,7 +98,10 @@
   <!-- Row 1: judul + refresh -->
   <div class="flex items-center justify-between mb-1">
     <h3 class="text-sm font-bold text-gray-400">Bybit — Posisi Aktif</h3>
-    <button onclick="loadBybit()" class="text-xs text-yellow-400 hover:underline flex-shrink-0">↻ Refresh</button>
+    <div class="flex items-center gap-3">
+      <button onclick="loadBybit()" class="text-xs text-yellow-400 hover:underline flex-shrink-0">↻ Refresh</button>
+      <button onclick="testOrder()" class="text-xs bg-purple-700 hover:bg-purple-600 text-white px-2 py-1 rounded flex-shrink-0">⚡ Test Order</button>
+    </div>
   </div>
   <!-- Row 2: balance -->
   <p class="text-xs text-gray-400 mb-3" id="bybitBalanceLabel"></p>
@@ -380,6 +383,18 @@ async function submitTpSl() {
   document.getElementById('tpslModal').classList.add('hidden');
   if (d.retCode === 0) { alert('TP/SL disimpan!'); loadBybit(); }
   else alert('Error: ' + d.retMsg);
+}
+
+async function testOrder() {
+  if (!confirm('Buka 0.001 BTC lalu langsung tutup untuk test koneksi bot ke Bybit?')) return;
+  const r = await fetch('/api/bybit/bot/force-trade', {method:'POST', credentials:'same-origin'});
+  const d = await r.json();
+  if (d.status === 'ok') {
+    alert('✅ ' + d.message + '\nHarga: $' + d.mark_price);
+  } else {
+    alert('❌ Gagal: ' + (d.error || JSON.stringify(d)));
+  }
+  loadBybit();
 }
 
 // Auto-refresh posisi Bybit setiap 5 detik
