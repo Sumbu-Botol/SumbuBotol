@@ -19,8 +19,6 @@ CRYPTO_SOURCES = [
     {"name": "CoinTelegraph", "url": "https://cointelegraph.com/rss",                    "lang": "en"},
     {"name": "Decrypt",       "url": "https://decrypt.co/feed",                          "lang": "en"},
     {"name": "The Block",     "url": "https://www.theblock.co/rss.xml",                  "lang": "en"},
-    {"name": "CryptoSlate",   "url": "https://cryptoslate.com/feed/",                    "lang": "en"},
-    {"name": "BeInCrypto",    "url": "https://beincrypto.com/feed/",                     "lang": "en"},
 ]
 
 GLOBAL_SOURCES = [
