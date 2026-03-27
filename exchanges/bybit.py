@@ -77,15 +77,10 @@ class BybitClient:
 
     # ── Positions ─────────────────────────────────────────────────────────────
 
-    async def get_positions(self, settle: str = "ALL") -> list[dict]:
-        """
-        Ambil semua posisi terbuka (USDT + USDC perpetual).
-        settle: 'ALL' | 'USDT' | 'USDC'
-        """
+    async def _fetch_positions_by_settle(self, settle_coin: str) -> list[dict]:
+        """Fetch posisi untuk satu settle coin (USDT atau USDC)."""
         ts  = str(int(time.time() * 1000))
-        qs  = "category=linear&limit=50"
-        if settle != "ALL":
-            qs += f"&settleCoin={settle}"
+        qs  = f"category=linear&limit=50&settleCoin={settle_coin}"
         sig = _sign(config.BYBIT_API_SECRET, ts, qs)
         async with _client() as client:
             r = await client.get(
@@ -102,29 +97,38 @@ class BybitClient:
             size = float(p.get("size", 0))
             if size == 0:
                 continue
-            entry  = float(p.get("avgPrice", 0))
-            mark   = float(p.get("markPrice", 0))
-            upnl   = float(p.get("unrealisedPnl", 0))
-            liq    = float(p.get("liqPrice", 0) or 0)
-            # Deteksi settle coin dari symbol
-            sym = p.get("symbol", "")
-            settle_coin = "USDC" if (sym.endswith("PERP") or sym.endswith("USDC")) else "USDT"
+            entry = float(p.get("avgPrice", 0))
+            mark  = float(p.get("markPrice", 0))
+            upnl  = float(p.get("unrealisedPnl", 0))
+            liq   = float(p.get("liqPrice", 0) or 0)
+            sym   = p.get("symbol", "")
             positions.append({
-                "symbol":        sym,
-                "side":          p.get("side", ""),          # Buy / Sell
-                "size":          size,
-                "entry_price":   entry,
-                "mark_price":    mark,
+                "symbol":         sym,
+                "side":           p.get("side", ""),
+                "size":           size,
+                "entry_price":    entry,
+                "mark_price":     mark,
                 "unrealized_pnl": upnl,
-                "pnl_pct":       round((upnl / (entry * size / float(p.get("leverage", 1)))) * 100, 2) if entry and size else 0,
-                "leverage":      int(float(p.get("leverage", 1))),
-                "liq_price":     liq,
-                "tp_price":      float(p.get("takeProfit", 0) or 0),
-                "sl_price":      float(p.get("stopLoss", 0) or 0),
-                "settle":        settle_coin,
+                "pnl_pct":        round((upnl / (entry * size / float(p.get("leverage", 1)))) * 100, 2) if entry and size else 0,
+                "leverage":       int(float(p.get("leverage", 1))),
+                "liq_price":      liq,
+                "tp_price":       float(p.get("takeProfit", 0) or 0),
+                "sl_price":       float(p.get("stopLoss", 0) or 0),
+                "settle":         settle_coin,
                 "position_value": float(p.get("positionValue", 0)),
             })
         return positions
+
+    async def get_positions(self, settle: str = "ALL") -> list[dict]:
+        """
+        Ambil semua posisi terbuka.
+        settle='ALL': fetch USDT dan USDC secara terpisah lalu gabungkan.
+        """
+        if settle == "ALL":
+            usdt = await self._fetch_positions_by_settle("USDT")
+            usdc = await self._fetch_positions_by_settle("USDC")
+            return usdt + usdc
+        return await self._fetch_positions_by_settle(settle)
 
     # ── Closed PnL History (semua halaman) ───────────────────────────────────
 
