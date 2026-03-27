@@ -233,15 +233,26 @@ function setSettle(s) {
 
 async function loadBybit() {
   try {
-    const [pos, bal] = await Promise.all([
-      fetch(`/api/bybit/positions?settle=${_settle}`, {credentials: 'same-origin'}).then(r => r.json()),
-      fetch('/api/bybit/balance', {credentials: 'same-origin'}).then(r => r.json()),
+    const [posResp, balResp] = await Promise.all([
+      fetch(`/api/bybit/positions?settle=${_settle}`, {credentials: 'same-origin'}),
+      fetch('/api/bybit/balance', {credentials: 'same-origin'}),
     ]);
-    _bybitPositions = Array.isArray(pos) ? pos : [];
+    const pos = await posResp.json();
+    const bal = await balResp.json();
+    // pos bisa array (sukses) atau {error, positions:[]} (configured tapi error)
+    if (Array.isArray(pos)) {
+      _bybitPositions = pos;
+    } else if (Array.isArray(pos.positions)) {
+      _bybitPositions = pos.positions;
+      if (pos.error) console.warn('[Bybit]', pos.error);
+    } else {
+      _bybitPositions = [];
+    }
     const balLabel = `USDT: $${(bal.USDT || 0).toFixed(2)} · USDC: $${(bal.USDC || 0).toFixed(2)}`;
     document.getElementById('bybitBalanceLabel').textContent = balLabel;
     renderBybitPositions();
   } catch(e) {
+    console.error('[Bybit] loadBybit error:', e);
     document.getElementById('bybitPositions').innerHTML =
       '<p class="text-red-400 text-xs">Gagal load posisi: ' + e.message + '</p>';
   }

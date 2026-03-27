@@ -259,54 +259,93 @@ def _bybit():
     from exchanges.bybit import BybitClient
     return BybitClient()
 
+def _bybit_not_configured() -> bool:
+    return not config.BYBIT_API_KEY or not config.BYBIT_API_SECRET
+
 @app.get("/api/bybit/balance")
 async def bybit_balance(request: Request):
     if not check_auth(request):
         raise HTTPException(status_code=401)
-    return await _bybit().get_balance()
+    if _bybit_not_configured():
+        return {"USDT": 0.0, "USDC": 0.0, "total_usd": 0.0, "error": "BYBIT_API_KEY not configured"}
+    try:
+        return await _bybit().get_balance()
+    except Exception as e:
+        print(f"[Bybit] balance error: {e}")
+        return {"USDT": 0.0, "USDC": 0.0, "total_usd": 0.0, "error": str(e)}
 
 @app.get("/api/bybit/positions")
 async def bybit_positions(request: Request, settle: str = "ALL"):
     if not check_auth(request):
         raise HTTPException(status_code=401)
-    return await _bybit().get_positions(settle)
+    if _bybit_not_configured():
+        return {"error": "BYBIT_API_KEY not configured", "positions": []}
+    try:
+        return await _bybit().get_positions(settle)
+    except Exception as e:
+        print(f"[Bybit] positions error: {e}")
+        return {"error": str(e), "positions": []}
 
 @app.post("/api/bybit/close")
 async def bybit_close(request: Request):
     if not check_auth(request):
         raise HTTPException(status_code=401)
-    d = await request.json()
-    return await _bybit().close_position(d["symbol"], d["side"], float(d["size"]))
+    if _bybit_not_configured():
+        raise HTTPException(status_code=503, detail="BYBIT_API_KEY not configured")
+    try:
+        d = await request.json()
+        return await _bybit().close_position(d["symbol"], d["side"], float(d["size"]))
+    except Exception as e:
+        print(f"[Bybit] close error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/bybit/close-all")
 async def bybit_close_all(request: Request):
     if not check_auth(request):
         raise HTTPException(status_code=401)
-    return await _bybit().close_all_positions()
+    if _bybit_not_configured():
+        raise HTTPException(status_code=503, detail="BYBIT_API_KEY not configured")
+    try:
+        return await _bybit().close_all_positions()
+    except Exception as e:
+        print(f"[Bybit] close-all error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/bybit/tp-sl")
 async def bybit_tp_sl(request: Request):
     if not check_auth(request):
         raise HTTPException(status_code=401)
-    d = await request.json()
-    return await _bybit().set_tp_sl(
-        d["symbol"],
-        tp=float(d.get("tp", 0)) or None,
-        sl=float(d.get("sl", 0)) or None,
-    )
+    if _bybit_not_configured():
+        raise HTTPException(status_code=503, detail="BYBIT_API_KEY not configured")
+    try:
+        d = await request.json()
+        return await _bybit().set_tp_sl(
+            d["symbol"],
+            tp=float(d.get("tp", 0)) or None,
+            sl=float(d.get("sl", 0)) or None,
+        )
+    except Exception as e:
+        print(f"[Bybit] tp-sl error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/bybit/order")
 async def bybit_order(request: Request):
     if not check_auth(request):
         raise HTTPException(status_code=401)
-    d = await request.json()
-    return await _bybit().place_order(
-        symbol=d["symbol"], side=d["side"], qty=float(d["qty"]),
-        order_type=d.get("type", "Market"),
-        price=float(d["price"]) if d.get("price") else None,
-        tp=float(d["tp"]) if d.get("tp") else None,
-        sl=float(d["sl"]) if d.get("sl") else None,
-    )
+    if _bybit_not_configured():
+        raise HTTPException(status_code=503, detail="BYBIT_API_KEY not configured")
+    try:
+        d = await request.json()
+        return await _bybit().place_order(
+            symbol=d["symbol"], side=d["side"], qty=float(d["qty"]),
+            order_type=d.get("type", "Market"),
+            price=float(d["price"]) if d.get("price") else None,
+            tp=float(d["tp"]) if d.get("tp") else None,
+            sl=float(d["sl"]) if d.get("sl") else None,
+        )
+    except Exception as e:
+        print(f"[Bybit] order error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/exchange/switch")
 async def exchange_switch(request: Request):
