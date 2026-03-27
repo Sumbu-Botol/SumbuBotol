@@ -79,22 +79,23 @@
   <canvas id="pnlChart" height="80"></canvas>
 </div>
 
-<!-- Bybit PnL Summary (3 kolom) -->
-<div class="grid grid-cols-3 gap-4 mb-4" id="bybitPnlSummary">
-  <div class="bg-gray-900 border border-gray-800 rounded-xl p-4">
-    <p class="text-xs text-gray-500 mb-1">Total Profit Futures</p>
-    <p class="text-2xl font-bold text-green-400" id="pnlProfit">—</p>
-    <p class="text-xs text-gray-600 mt-1" id="pnlSince">Memuat...</p>
-  </div>
-  <div class="bg-gray-900 border border-gray-800 rounded-xl p-4">
-    <p class="text-xs text-gray-500 mb-1">Total Rugi Futures</p>
-    <p class="text-2xl font-bold text-red-400" id="pnlLoss">—</p>
-    <p class="text-xs text-gray-600 mt-1" id="pnlTrades">— trades</p>
-  </div>
-  <div class="bg-gray-900 border border-gray-800 rounded-xl p-4">
-    <p class="text-xs text-gray-500 mb-1">Delta Akumulasi</p>
-    <p class="text-2xl font-bold" id="pnlNet">—</p>
-    <p class="text-xs text-gray-600 mt-1">USDT + USDC</p>
+<!-- Bybit PnL Summary -->
+<div class="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-4">
+  <p class="text-xs text-gray-500 mb-3" id="pnlSince">Memuat riwayat trading...</p>
+  <div class="grid grid-cols-3 gap-3">
+    <div>
+      <p class="text-[11px] text-gray-500 mb-1">Total Profit</p>
+      <p class="text-lg font-bold text-green-400 truncate" id="pnlProfit">—</p>
+    </div>
+    <div>
+      <p class="text-[11px] text-gray-500 mb-1">Total Rugi</p>
+      <p class="text-lg font-bold text-red-400 truncate" id="pnlLoss">—</p>
+      <p class="text-[10px] text-gray-600" id="pnlTrades"></p>
+    </div>
+    <div>
+      <p class="text-[11px] text-gray-500 mb-1">Delta</p>
+      <p class="text-lg font-bold truncate" id="pnlNet">—</p>
+    </div>
   </div>
 </div>
 
@@ -400,17 +401,18 @@ async function loadPnlSummary() {
       console.warn('[PnL]', d.error);
       return;
     }
-    const fmt = (v) => (v >= 0 ? '+' : '') + v.toFixed(2);
     document.getElementById('pnlProfit').textContent = '+$' + d.total_profit.toFixed(2);
-    document.getElementById('pnlLoss').textContent   = '$' + d.total_loss.toFixed(2);
+    document.getElementById('pnlLoss').textContent   = '-$' + Math.abs(d.total_loss).toFixed(2);
     const net = document.getElementById('pnlNet');
-    net.textContent = fmt(d.net_pnl) + ' USD';
-    net.className   = 'text-2xl font-bold ' + (d.net_pnl >= 0 ? 'text-green-400' : 'text-red-400');
-    document.getElementById('pnlTrades').textContent = d.trade_count + ' trades ditutup';
+    const netSign = d.net_pnl >= 0 ? '+' : '-';
+    net.textContent = netSign + '$' + Math.abs(d.net_pnl).toFixed(2);
+    net.className   = 'text-lg font-bold truncate ' + (d.net_pnl >= 0 ? 'text-green-400' : 'text-red-400');
+    document.getElementById('pnlTrades').textContent = d.trade_count + ' trades';
     if (d.earliest_ms) {
-      const opts = {year:'numeric', month:'long', day:'numeric'};
+      const since = new Date(d.earliest_ms);
+      const opts  = {day:'numeric', month:'short', year:'numeric'};
       document.getElementById('pnlSince').textContent =
-        'Sejak ' + new Date(d.earliest_ms).toLocaleDateString('id-ID', opts);
+        `Futures sejak ${since.toLocaleDateString('id-ID', opts)} · ${d.trade_count} trades`;
     } else {
       document.getElementById('pnlSince').textContent = 'Belum ada trade ditutup';
     }
