@@ -387,14 +387,20 @@ async function submitTpSl() {
 
 async function testOrder() {
   if (!confirm('Buka 0.001 BTC lalu langsung tutup untuk test koneksi bot ke Bybit?')) return;
-  const r = await fetch('/api/bybit/bot/force-trade', {method:'POST', credentials:'same-origin'});
-  const d = await r.json();
-  if (d.status === 'ok') {
-    alert('✅ ' + d.message + '\nHarga: $' + d.mark_price);
-  } else {
-    alert('❌ Gagal: ' + (d.error || JSON.stringify(d)));
+  try {
+    const r = await fetch('/api/bybit/bot/force-trade', {method:'POST', credentials:'same-origin'});
+    const text = await r.text();
+    if (!text) { alert('❌ Server tidak merespons — coba lagi setelah Railway selesai deploy'); return; }
+    const d = JSON.parse(text);
+    if (d.status === 'ok') {
+      alert('✅ ' + d.message + '\nHarga: $' + d.mark_price);
+    } else {
+      alert('❌ Gagal: ' + (d.error || JSON.stringify(d)));
+    }
+    loadBybit();
+  } catch(e) {
+    alert('❌ Error: ' + e.message);
   }
-  loadBybit();
 }
 
 // Auto-refresh posisi Bybit setiap 5 detik
