@@ -19,24 +19,25 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 
 # ── RSS Sources ───────────────────────────────────────────────────────────────
 
+# interval=0 → tiap siklus, interval=300 → setiap 5 menit (hindari rate-limit)
 CRYPTO_SOURCES = [
-    {"name": "CoinDesk",      "url": "https://www.coindesk.com/arc/outboundfeeds/rss/"},
-    {"name": "CoinTelegraph", "url": "https://cointelegraph.com/rss"},
-    {"name": "Decrypt",       "url": "https://decrypt.co/feed"},
-    {"name": "The Block",     "url": "https://www.theblock.co/rss.xml"},
+    {"name": "CoinDesk",      "url": "https://www.coindesk.com/arc/outboundfeeds/rss/",  "interval": 0},
+    {"name": "CoinTelegraph", "url": "https://cointelegraph.com/rss",                    "interval": 0},
+    {"name": "Decrypt",       "url": "https://decrypt.co/feed",                          "interval": 0},
+    {"name": "The Block",     "url": "https://www.theblock.co/rss.xml",                  "interval": 0},
 ]
 
 GLOBAL_SOURCES = [
-    {"name": "Bloomberg", "url": "https://feeds.bloomberg.com/markets/news.rss"},
-    {"name": "Bloomberg", "url": "https://feeds.bloomberg.com/economics/news.rss"},
-    {"name": "WSJ",       "url": "https://feeds.a.dj.com/rss/RSSMarketsMain.xml"},
-    {"name": "WSJ",       "url": "https://feeds.a.dj.com/rss/WSJcomUSBusiness.xml"},
-    {"name": "WSJ",       "url": "https://feeds.a.dj.com/rss/RSSWorldNews.xml"},
-    {"name": "Financial Times", "url": "https://www.ft.com/rss/home"},
-    {"name": "CNBC",      "url": "https://www.cnbc.com/id/100003114/device/rss/rss.html"},
-    {"name": "CNBC",      "url": "https://www.cnbc.com/id/10000664/device/rss/rss.html"},
-    {"name": "Reuters",   "url": "https://www.reutersagency.com/feed/?best-topics=business-finance"},
-    {"name": "Reuters",   "url": "https://www.reutersagency.com/feed/?best-topics=tech"},
+    {"name": "Bloomberg", "url": "https://feeds.bloomberg.com/markets/news.rss",                       "interval": 300},
+    {"name": "Bloomberg", "url": "https://feeds.bloomberg.com/economics/news.rss",                     "interval": 300},
+    {"name": "WSJ",       "url": "https://feeds.a.dj.com/rss/RSSMarketsMain.xml",                      "interval": 300},
+    {"name": "WSJ",       "url": "https://feeds.a.dj.com/rss/WSJcomUSBusiness.xml",                    "interval": 300},
+    {"name": "WSJ",       "url": "https://feeds.a.dj.com/rss/RSSWorldNews.xml",                        "interval": 300},
+    {"name": "Financial Times", "url": "https://www.ft.com/rss/home",                                  "interval": 300},
+    {"name": "CNBC",      "url": "https://www.cnbc.com/id/100003114/device/rss/rss.html",              "interval": 0},
+    {"name": "CNBC",      "url": "https://www.cnbc.com/id/10000664/device/rss/rss.html",               "interval": 0},
+    {"name": "Reuters",   "url": "https://www.reutersagency.com/feed/?best-topics=business-finance",   "interval": 0},
+    {"name": "Reuters",   "url": "https://www.reutersagency.com/feed/?best-topics=tech",               "interval": 0},
 ]
 
 HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; NewsBot/1.0)"}
@@ -95,6 +96,7 @@ class NewsFetcher:
         self._global_articles: list[dict] = []
         self._seen_hashes: set  = set()
         self._callbacks: list   = []
+        self._last_fetch: dict  = {}   # url → timestamp last fetched
 
     def on_new_article(self, callback):
         self._callbacks.append(callback)
@@ -164,6 +166,13 @@ class NewsFetcher:
 
     async def _fetch_source(self, source: dict, category: str) -> list[dict]:
         """Fetch satu RSS source, return list artikel BARU (belum di cache)."""
+        # Throttle: skip jika belum waktunya
+        min_interval = source.get("interval", 0)
+        if min_interval > 0:
+            last = self._last_fetch.get(source["url"], 0)
+            if (datetime.now(timezone.utc).timestamp() - last) < min_interval:
+                return []
+        self._last_fetch[source["url"]] = datetime.now(timezone.utc).timestamp()
         try:
             async with httpx.AsyncClient(timeout=8, headers=HEADERS, follow_redirects=True) as client:
                 r = await client.get(source["url"])
