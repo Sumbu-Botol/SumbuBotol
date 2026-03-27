@@ -149,6 +149,27 @@ class BybitClient:
             return usdt + usdc
         return await self._fetch_positions_by_settle(settle)
 
+    # ── Position Mode ─────────────────────────────────────────────────────────
+
+    async def _get_position_mode(self, symbol: str) -> str:
+        """Return 'BothSide' (hedge) atau 'MergedSingle' (one-way)."""
+        try:
+            ts  = str(int(time.time() * 1000))
+            qs  = f"category=linear&symbol={symbol}"
+            sig = _sign(config.BYBIT_API_SECRET, ts, qs)
+            async with _client() as client:
+                r = await client.get(
+                    f"{_base_url()}/v5/position/list?{qs}",
+                    headers=_headers(ts, sig),
+                )
+            data = r.json()
+            items = data.get("result", {}).get("list", [])
+            if items:
+                return items[0].get("positionMode", "MergedSingle")
+        except Exception:
+            pass
+        return "MergedSingle"  # default one-way
+
     # ── Orders ────────────────────────────────────────────────────────────────
 
     async def place_order(
@@ -161,15 +182,25 @@ class BybitClient:
         tp: float = None,
         sl: float = None,
         reduce_only: bool = False,
+        position_idx: int = None,  # None = auto-detect dari position mode
     ) -> dict:
+        # Auto-detect positionIdx: hedge mode → Buy=1, Sell=2 | one-way → 0
+        if position_idx is None:
+            mode = await self._get_position_mode(symbol)
+            if mode == "BothSide":  # hedge mode
+                position_idx = 1 if side == "Buy" else 2
+            else:
+                position_idx = 0
+
         ts   = str(int(time.time() * 1000))
         body: dict = {
-            "category":  "linear",
-            "symbol":    symbol,
-            "side":      side,
-            "orderType": order_type,
-            "qty":       str(qty),
-            "reduceOnly": reduce_only,
+            "category":    "linear",
+            "symbol":      symbol,
+            "side":        side,
+            "orderType":   order_type,
+            "qty":         str(qty),
+            "reduceOnly":  reduce_only,
+            "positionIdx": position_idx,
             "timeInForce": "GTC" if order_type == "Limit" else "IOC",
         }
         if price and order_type == "Limit":
@@ -196,7 +227,13 @@ class BybitClient:
     async def close_position(self, symbol: str, side: str, size: float) -> dict:
         """Tutup posisi dengan market order reduce-only."""
         close_side = "Sell" if side == "Buy" else "Buy"
-        return await self.place_order(symbol, close_side, size, reduce_only=True)
+        # Untuk hedge mode: tutup long (Buy→positionIdx=1), tutup short (Sell→positionIdx=2)
+        mode = await self._get_position_mode(symbol)
+        if mode == "BothSide":
+            pos_idx = 1 if side == "Buy" else 2  # sisi yang mau ditutup, bukan close_side
+        else:
+            pos_idx = 0
+        return await self.place_order(symbol, close_side, size, reduce_only=True, position_idx=pos_idx)
 
     async def close_all_positions(self) -> list:
         positions = await self.get_positions()
