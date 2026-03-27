@@ -259,19 +259,18 @@ async function loadBybit() {
 
     if (newPositions !== null) {
       if (newPositions.length > 0) {
-        // Ada posisi — update langsung
         _bybitPositions = newPositions;
         _bybitEmptyCount = 0;
-        renderBybitPositions();
       } else {
-        // Kosong — tapi tunggu beberapa kali konfirmasi sebelum clear
         _bybitEmptyCount++;
-        if (_bybitEmptyCount >= EMPTY_CONFIRM || _bybitPositions.length === 0) {
+        if (_bybitEmptyCount >= EMPTY_CONFIRM) {
           _bybitPositions = [];
-          renderBybitPositions();
         }
-        // Kalau belum EMPTY_CONFIRM kali, tetap tampilkan data lama
       }
+      renderBybitPositions();
+    } else if (_bybitPositions.length === 0) {
+      // Error tapi belum pernah dapat data — render kosong (hapus "Memuat posisi...")
+      renderBybitPositions();
     }
 
     // Balance update — hanya kalau tidak ada error (jangan timpa dengan $0.00)
@@ -386,25 +385,32 @@ setInterval(loadBybit, 5000);
 
 // ── Bybit PnL Summary (total profit/rugi sejak awal) ──────────────────────
 async function loadPnlSummary() {
+  document.getElementById('pnlSince').textContent = 'Mengambil semua data...';
   try {
-    const d = await fetch('/api/bybit/pnl-summary', {credentials: 'same-origin'}).then(r => r.json());
-    if (d.error) { console.warn('[PnL]', d.error); return; }
-
+    const resp = await fetch('/api/bybit/pnl-summary', {credentials: 'same-origin'});
+    const d    = await resp.json();
+    if (d.error) {
+      document.getElementById('pnlSince').textContent = 'Gagal: ' + d.error;
+      console.warn('[PnL]', d.error);
+      return;
+    }
     const fmt = (v) => (v >= 0 ? '+' : '') + v.toFixed(2);
     document.getElementById('pnlProfit').textContent = '+$' + d.total_profit.toFixed(2);
     document.getElementById('pnlLoss').textContent   = '$' + d.total_loss.toFixed(2);
     const net = document.getElementById('pnlNet');
-    net.textContent  = fmt(d.net_pnl) + ' USDT';
-    net.className    = 'text-2xl font-bold ' + (d.net_pnl >= 0 ? 'text-green-400' : 'text-red-400');
+    net.textContent = fmt(d.net_pnl) + ' USD';
+    net.className   = 'text-2xl font-bold ' + (d.net_pnl >= 0 ? 'text-green-400' : 'text-red-400');
     document.getElementById('pnlTrades').textContent = d.trade_count + ' trades ditutup';
-
     if (d.earliest_ms) {
-      const since = new Date(d.earliest_ms);
-      const opts  = {year:'numeric', month:'long', day:'numeric'};
-      document.getElementById('pnlSince').textContent = 'Sejak ' + since.toLocaleDateString('id-ID', opts);
+      const opts = {year:'numeric', month:'long', day:'numeric'};
+      document.getElementById('pnlSince').textContent =
+        'Sejak ' + new Date(d.earliest_ms).toLocaleDateString('id-ID', opts);
+    } else {
+      document.getElementById('pnlSince').textContent = 'Belum ada trade ditutup';
     }
   } catch(e) {
-    console.error('[PnL] error:', e);
+    document.getElementById('pnlSince').textContent = 'Error: ' + e.message;
+    console.error('[PnL]', e);
   }
 }
 loadPnlSummary();

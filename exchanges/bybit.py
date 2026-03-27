@@ -131,8 +131,7 @@ class BybitClient:
     async def get_closed_pnl_all(self) -> dict:
         """
         Fetch semua closed PnL sejak awal trading (USDT + USDC perpetual).
-        Paginasi otomatis sampai habis.
-        Return: {total_profit, total_loss, net_pnl, trade_count, earliest_ms, latest_ms}
+        Paginasi otomatis, max 50 halaman (~5000 trades).
         """
         total_profit = 0.0
         total_loss   = 0.0
@@ -140,8 +139,10 @@ class BybitClient:
         earliest_ms  = None
         latest_ms    = None
         cursor       = ""
+        page         = 0
+        MAX_PAGES    = 50
 
-        while True:
+        while page < MAX_PAGES:
             ts  = str(int(time.time() * 1000))
             qs  = "category=linear&limit=100"
             if cursor:
@@ -160,7 +161,7 @@ class BybitClient:
 
             items = data["result"].get("list", [])
             for item in items:
-                pnl = float(item.get("closedPnl", 0))
+                pnl   = float(item.get("closedPnl", 0))
                 ts_ms = int(item.get("createdTime", 0))
                 if pnl > 0:
                     total_profit += pnl
@@ -174,8 +175,9 @@ class BybitClient:
                         latest_ms = ts_ms
 
             cursor = data["result"].get("nextPageCursor", "")
+            page  += 1
             if not cursor or not items:
-                break  # sudah habis semua halaman
+                break
 
         return {
             "total_profit": round(total_profit, 4),
