@@ -221,6 +221,9 @@ async function botAction(action) {
 // ── Bybit Position Monitor ─────────────────────────────────────────────────
 let _settle = 'ALL';
 let _bybitPositions = [];
+let _bybitEmptyCount = 0;      // berapa kali berturut-turut dapat posisi kosong
+const EMPTY_CONFIRM = 4;       // butuh 4x berturut-turut kosong sebelum clear UI
+let _bybitLoading = false;     // cegah concurrent request
 
 function setSettle(s) {
   _settle = s;
@@ -228,37 +231,56 @@ function setSettle(s) {
     b.className = 'settle-btn px-2 py-1 rounded ' +
       (b.id === 'sf-' + s ? 'bg-yellow-400 text-black font-bold' : 'bg-gray-800 text-gray-400');
   });
+  _bybitEmptyCount = 0;
   loadBybit();
 }
 
 async function loadBybit() {
+  if (_bybitLoading) return;   // skip kalau request sebelumnya belum selesai
+  _bybitLoading = true;
   try {
     const [posResp, balResp] = await Promise.all([
       fetch(`/api/bybit/positions?settle=${_settle}`, {credentials: 'same-origin'}),
       fetch('/api/bybit/balance', {credentials: 'same-origin'}),
     ]);
+    if (!posResp.ok || !balResp.ok) throw new Error('HTTP ' + posResp.status);
     const pos = await posResp.json();
     const bal = await balResp.json();
-    // pos bisa array (sukses) atau {error, positions:[]} (configured tapi error)
+
+    // Parse posisi
     let newPositions = null;
     if (Array.isArray(pos)) {
       newPositions = pos;
     } else if (Array.isArray(pos.positions)) {
       newPositions = pos.positions;
-      if (pos.error) console.warn('[Bybit]', pos.error);
     }
-    // Hanya update UI kalau dapat data valid — jangan reset kalau gagal
+
     if (newPositions !== null) {
-      _bybitPositions = newPositions;
-      renderBybitPositions();
+      if (newPositions.length > 0) {
+        // Ada posisi — update langsung
+        _bybitPositions = newPositions;
+        _bybitEmptyCount = 0;
+        renderBybitPositions();
+      } else {
+        // Kosong — tapi tunggu beberapa kali konfirmasi sebelum clear
+        _bybitEmptyCount++;
+        if (_bybitEmptyCount >= EMPTY_CONFIRM || _bybitPositions.length === 0) {
+          _bybitPositions = [];
+          renderBybitPositions();
+        }
+        // Kalau belum EMPTY_CONFIRM kali, tetap tampilkan data lama
+      }
     }
-    // Balance selalu update kalau ada
-    if (bal && !bal.error) {
+
+    // Balance update
+    if (bal && (bal.USDT !== undefined || bal.USDC !== undefined)) {
       const balLabel = `USDT: $${(bal.USDT || 0).toFixed(2)} · USDC: $${(bal.USDC || 0).toFixed(2)}`;
       document.getElementById('bybitBalanceLabel').textContent = balLabel;
     }
   } catch(e) {
-    console.error('[Bybit] refresh error (data lama tetap tampil):', e);
+    console.error('[Bybit] refresh error, data lama tetap tampil:', e.message);
+  } finally {
+    _bybitLoading = false;
   }
 }
 
