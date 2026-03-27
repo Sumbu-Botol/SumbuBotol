@@ -68,9 +68,9 @@ class BybitClient:
         for acct in data["result"].get("list", []):
             for coin in acct.get("coin", []):
                 if coin["coin"] == "USDT":
-                    result["USDT"] = float(coin.get("walletBalance", 0))
+                    result["USDT"] = float(coin.get("equity", 0))
                 elif coin["coin"] == "USDC":
-                    result["USDC"] = float(coin.get("walletBalance", 0))
+                    result["USDC"] = float(coin.get("equity", 0))
         result["total_usd"] = result["USDT"] + result["USDC"]
         return result
 
