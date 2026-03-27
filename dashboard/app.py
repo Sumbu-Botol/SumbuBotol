@@ -262,6 +262,19 @@ def _bybit():
 def _bybit_not_configured() -> bool:
     return not config.BYBIT_API_KEY or not config.BYBIT_API_SECRET
 
+@app.get("/api/bybit/ip")
+async def bybit_ip(request: Request):
+    """Tampilkan outbound IP server Railway — untuk diwhitelist di Bybit API."""
+    if not check_auth(request):
+        raise HTTPException(status_code=401)
+    import httpx
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            r = await client.get("https://api.ipify.org?format=json")
+            return r.json()
+    except Exception as e:
+        return {"error": str(e)}
+
 @app.get("/api/bybit/test")
 async def bybit_test(request: Request):
     """Debug endpoint — cek apakah Bybit API terhubung dengan benar."""
