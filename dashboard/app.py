@@ -657,6 +657,34 @@ async def poly_balance(request: Request):
     except Exception as e:
         return {"error": str(e)}
 
+@app.get("/api/polymarket/verify-key")
+async def poly_verify_key(request: Request):
+    """Test apakah POLY_PRIVATE_KEY valid dengan coba sign + call CLOB balance."""
+    if not check_auth(request):
+        raise HTTPException(status_code=401)
+    if not config.POLY_WALLET_ADDRESS:
+        return {"ok": False, "error": "POLY_WALLET_ADDRESS belum diset"}
+    if not config.POLY_PRIVATE_KEY:
+        return {"ok": False, "error": "POLY_PRIVATE_KEY belum diset"}
+    try:
+        from eth_account import Account
+        from eth_account.messages import encode_defunct
+        # Test sign
+        msg     = encode_defunct(text="polymarket-verify")
+        signed  = Account.sign_message(msg, private_key=config.POLY_PRIVATE_KEY)
+        # Derive address from private key
+        derived = Account.from_key(config.POLY_PRIVATE_KEY).address
+        match   = derived.lower() == config.POLY_WALLET_ADDRESS.lower()
+        return {
+            "ok":             match,
+            "wallet_set":     config.POLY_WALLET_ADDRESS[:10] + "...",
+            "derived_from_key": derived[:10] + "...",
+            "match":          match,
+            "message":        "Private key cocok dengan wallet address!" if match else "PRIVATE KEY TIDAK COCOK dengan wallet address!",
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
 @app.get("/api/polymarket/history")
 async def poly_history(request: Request, limit: int = 20):
     """Riwayat trade Polymarket berdasarkan wallet address."""
