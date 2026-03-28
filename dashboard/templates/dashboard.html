@@ -136,6 +136,8 @@
       <button onclick="scanOpportunities()"    class="flex-1 bg-blue-700 hover:bg-blue-600 text-white py-1.5 rounded text-xs font-bold">🔍 Scan</button>
     </div>
     <div id="polyOpportunities"></div>
+    <!-- Bot Logs -->
+    <div id="polyLogs" class="mt-2 bg-gray-900 rounded p-2 max-h-40 overflow-y-auto text-[10px] font-mono text-gray-400 hidden"></div>
   </div>
 
   <!-- Positions -->
@@ -584,7 +586,16 @@ async function loadPolyBotStatus() {
   } else {
     el.innerHTML = `<span class="text-gray-500">● STOPPED</span>`;
   }
+  const logEl = document.getElementById('polyLogs');
+  if (d.logs && d.logs.length > 0) {
+    logEl.classList.remove('hidden');
+    logEl.innerHTML = d.logs.map(l => `<div class="${l.includes('error') || l.includes('Error') ? 'text-red-400' : l.includes('Started') || l.includes('peluang') ? 'text-green-400' : 'text-gray-400'}">${l}</div>`).join('');
+    logEl.scrollTop = logEl.scrollHeight;
+  } else {
+    logEl.classList.add('hidden');
+  }
 }
+setInterval(loadPolyBotStatus, 5000);
 
 async function scanOpportunities() {
   document.getElementById('polyOpportunities').innerHTML = '<p class="text-xs text-gray-500">Scanning...</p>';
