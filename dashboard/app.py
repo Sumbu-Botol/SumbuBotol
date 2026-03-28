@@ -676,11 +676,12 @@ async def poly_verify_key(request: Request):
         derived = Account.from_key(config.POLY_PRIVATE_KEY).address
         match   = derived.lower() == config.POLY_WALLET_ADDRESS.lower()
         return {
-            "ok":             match,
-            "wallet_set":     config.POLY_WALLET_ADDRESS[:10] + "...",
+            "ok":               match,
+            "wallet_set":       config.POLY_WALLET_ADDRESS[:10] + "...",
             "derived_from_key": derived[:10] + "...",
-            "match":          match,
-            "message":        "Private key cocok dengan wallet address!" if match else "PRIVATE KEY TIDAK COCOK dengan wallet address!",
+            "key_preview":      config.POLY_PRIVATE_KEY[:6] + "...",
+            "match":            match,
+            "message":          "Private key cocok dengan wallet address!" if match else "PRIVATE KEY TIDAK COCOK dengan wallet address!",
         }
     except Exception as e:
         return {"ok": False, "error": str(e)}
