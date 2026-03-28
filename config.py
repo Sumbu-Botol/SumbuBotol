@@ -70,10 +70,10 @@ MAX_DAILY_LOSS   = float(os.getenv("MAX_DAILY_LOSS", "50"))
 # PER-EXCHANGE BOT SETTINGS  (runtime, dapat diubah via dashboard)
 # ──────────────────────────────────────────
 # Bybit Bot
-BYBIT_BOT_PAIR      = os.getenv("BYBIT_BOT_PAIR", "BTC")
+BYBIT_BOT_PAIR      = os.getenv("BYBIT_BOT_PAIR", "BTCPERP")   # USDC Perp
 BYBIT_BOT_TIMEFRAME = os.getenv("BYBIT_BOT_TIMEFRAME", "5m")
-BYBIT_BOT_LEVERAGE  = int(os.getenv("BYBIT_BOT_LEVERAGE", "10"))
-BYBIT_BOT_SIZE      = float(os.getenv("BYBIT_BOT_SIZE", "50"))
+BYBIT_BOT_LEVERAGE  = int(os.getenv("BYBIT_BOT_LEVERAGE", "125"))
+BYBIT_BOT_SIZE      = float(os.getenv("BYBIT_BOT_SIZE", "1"))   # margin USDC per trade
 BYBIT_BOT_TP        = float(os.getenv("BYBIT_BOT_TP", "0")) or None
 BYBIT_BOT_SL        = float(os.getenv("BYBIT_BOT_SL", "0")) or None
 BYBIT_BOT_PERSONA   = os.getenv("BYBIT_BOT_PERSONA", "quantitative_trader")

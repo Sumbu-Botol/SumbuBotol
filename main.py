@@ -25,6 +25,18 @@ from news.fetcher import NewsFetcher
 # Konversi timeframe dashboard (1m, 5m, 1h) → Bybit interval string
 _TF_MAP = {"1m":"1","3m":"3","5m":"5","15m":"15","30m":"30","1h":"60","2h":"120","4h":"240","1d":"D","1w":"W"}
 
+def _bybit_symbol(pair: str) -> str:
+    """Construct Bybit symbol. Full symbols (BTCPERP, BTCUSDT) used as-is.
+    Short pairs (BTC, ETH) get USDT appended."""
+    pair = pair.upper()
+    if pair.endswith("PERP") or pair.endswith("USDT") or pair.endswith("USDC"):
+        return pair
+    return pair + "USDT"
+
+def _bybit_settle_coin(symbol: str) -> str:
+    """Return settle coin for balance check: USDC for PERP, else USDT."""
+    return "USDC" if symbol.endswith("PERP") else "USDT"
+
 
 class BotRunner:
     def __init__(self):
@@ -219,7 +231,7 @@ class BybitBotRunner:
             return
         self.is_running = True
         self.strategy.set_persona(config.BYBIT_BOT_PERSONA)
-        pair   = config.BYBIT_BOT_PAIR + "USDT"
+        pair   = _bybit_symbol(config.BYBIT_BOT_PAIR)
         tf     = config.BYBIT_BOT_TIMEFRAME
         lev    = config.BYBIT_BOT_LEVERAGE
         size   = config.BYBIT_BOT_SIZE
@@ -240,7 +252,7 @@ class BybitBotRunner:
     # ── Trading loop ──────────────────────────────────────────────────────────
 
     async def _trading_loop(self):
-        symbol = config.BYBIT_BOT_PAIR + "USDT"
+        symbol = _bybit_symbol(config.BYBIT_BOT_PAIR)
         print(f"[BybitBot] Loop dimulai — {symbol} @ {config.BYBIT_BOT_TIMEFRAME}")
         while self.is_running:
             try:
@@ -253,7 +265,7 @@ class BybitBotRunner:
             await asyncio.sleep(config.POLL_INTERVAL)
 
     async def _tick(self):
-        symbol   = config.BYBIT_BOT_PAIR + "USDT"
+        symbol   = _bybit_symbol(config.BYBIT_BOT_PAIR)
         interval = _TF_MAP.get(config.BYBIT_BOT_TIMEFRAME, "60")
 
         # 1. Ambil candle
@@ -281,13 +293,14 @@ class BybitBotRunner:
 
     async def _open_trade(self, symbol: str, signal):
         try:
-            bal  = await self.bybit.get_balance()
-            usdt = bal.get("USDT", 0.0)
+            bal        = await self.bybit.get_balance()
+            settle     = _bybit_settle_coin(symbol)
+            avail_bal  = bal.get(settle, 0.0)
         except Exception as e:
             print(f"[BybitBot] balance error: {e}")
             return
 
-        can_trade, reason = self.risk.can_open_trade(usdt)
+        can_trade, reason = self.risk.can_open_trade(avail_bal)
         if not can_trade:
             print(f"[BybitBot] Skip: {reason}")
             return
