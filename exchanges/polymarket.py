@@ -72,7 +72,7 @@ class PolymarketClient:
             yes_token_id = ""
             no_token_id  = ""
 
-            # Token IDs from tokens array
+            # Token IDs from tokens array (by name first, then by index)
             for t in tokens:
                 outcome_name = t.get("outcome", "").lower()
                 if outcome_name == "yes":
@@ -81,6 +81,11 @@ class PolymarketClient:
                 elif outcome_name == "no":
                     no_token_id  = t.get("token_id", "")
                     no_price     = float(t.get("price", 0) or 0)
+            # Fallback by index for sports/non-binary markets
+            if not yes_token_id and len(tokens) > 0:
+                yes_token_id = tokens[0].get("token_id", "")
+            if not no_token_id and len(tokens) > 1:
+                no_token_id = tokens[1].get("token_id", "")
 
             # Gamma API stores prices in outcomePrices as JSON string
             # e.g. outcomePrices='["0.95","0.05"]', outcomes='["Yes","No"]'
