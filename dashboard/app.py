@@ -433,29 +433,32 @@ async def bybit_force_trade(request: Request):
         import time as _time
         client = _bybit()
 
+        symbol = config.BYBIT_BOT_PAIR  # BTCPERP by default
+        lev    = config.BYBIT_BOT_LEVERAGE  # 125x by default
+
         # Ambil harga mark terkini
-        tickers = await client.get_tickers(["BTCUSDT"])
-        mark_price = tickers.get("BTCUSDT", {}).get("mark_price", 0)
+        tickers = await client.get_tickers([symbol])
+        mark_price = tickers.get(symbol, {}).get("mark_price", 0)
         if not mark_price:
-            return {"error": "Gagal ambil harga BTCUSDT"}
+            return {"error": f"Gagal ambil harga {symbol}"}
 
         # Set leverage
-        await client.set_leverage("BTCUSDT", 10)
+        await client.set_leverage(symbol, lev)
 
-        # Order minimum: 0.001 BTC (Bybit minimum)
+        # Order minimum: 0.001 BTC
         qty = 0.001
-        tp  = round(mark_price * 1.005, 2)   # TP +0.5%
-        sl  = round(mark_price * 0.995, 2)   # SL -0.5%
+        tp  = round(mark_price * 1.005, 2)
+        sl  = round(mark_price * 0.995, 2)
 
         # Buka LONG
-        open_result = await client.place_order("BTCUSDT", "Buy", qty, tp=tp, sl=sl)
+        open_result = await client.place_order(symbol, "Buy", qty, tp=tp, sl=sl)
         if open_result.get("retCode") != 0:
             return {"error": f"Order gagal: {open_result.get('retMsg')}", "detail": open_result}
 
         await asyncio.sleep(2)
 
         # Tutup langsung
-        close_result = await client.close_position("BTCUSDT", "Buy", qty)
+        close_result = await client.close_position(symbol, "Buy", qty)
 
         return {
             "status":       "ok",
