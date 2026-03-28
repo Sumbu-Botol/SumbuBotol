@@ -3,15 +3,15 @@ Polymarket CLOB Client
 ======================
 Mendukung:
 - Gamma API (public): market data, popular markets, positions by wallet
-- CLOB API (L1 auth via private key): balance, order placement
+- CLOB API (py-clob-client): balance, order placement dengan EIP-712 signing
 
-Autentikasi L1: sign setiap request pakai ETH private key (eth-account).
-Tidak perlu API key/secret/passphrase terpisah.
+Order placement pakai py-clob-client (library resmi Polymarket) yang handle:
+- EIP-712 order signing
+- L1 auth untuk buat API key
+- L2 auth (HMAC) untuk kirim order
 Cukup set: POLY_WALLET_ADDRESS + POLY_PRIVATE_KEY
 """
 import httpx
-import hmac
-import hashlib
 import time
 import json
 import sys, os
@@ -25,8 +25,16 @@ try:
 except ImportError:
     _ETH_AVAILABLE = False
 
+try:
+    from py_clob_client.client import ClobClient as _ClobClient
+    from py_clob_client.clob_types import OrderArgs as _OrderArgs, OrderType as _OrderType
+    _CLOB_CLIENT_AVAILABLE = True
+except ImportError:
+    _CLOB_CLIENT_AVAILABLE = False
+
 GAMMA_URL = "https://gamma-api.polymarket.com"
 CLOB_URL  = "https://clob.polymarket.com"
+_POLYGON_CHAIN_ID = 137
 
 
 def _client(**kwargs) -> httpx.AsyncClient:
@@ -38,10 +46,11 @@ def _client(**kwargs) -> httpx.AsyncClient:
     return httpx.AsyncClient(**kwargs)
 
 
-class PolymarketClient:
+def _get_proxy() -> str:
+    return getattr(config, "POLY_PROXY", "") or ""
 
-    def __init__(self):
-        self._api_key_cache: dict = {}   # {"apiKey", "secret", "passphrase"}
+
+class PolymarketClient:
 
     def is_configured(self) -> bool:
         return bool(config.POLY_WALLET_ADDRESS)
@@ -63,36 +72,6 @@ class PolymarketClient:
             "POLY-TIMESTAMP": ts,
             "POLY-SIGNATURE": sig,
             "Content-Type":   "application/json",
-        }
-
-    # ── L2 Auth (API key via HMAC) ────────────────────────────────────────────
-
-    async def _ensure_api_key(self) -> dict:
-        """Create L2 API key using L1 auth. Cached per instance."""
-        if self._api_key_cache:
-            return self._api_key_cache
-        path = "/auth/api-key"
-        headers = self._auth_headers("POST", path)
-        headers["Content-Type"] = "application/json"
-        async with _client() as client:
-            r = await client.post(f"{CLOB_URL}{path}", headers=headers, content="{}")
-        if not r.is_success:
-            raise Exception(f"Gagal buat API key: {r.status_code} {r.text[:200]}")
-        self._api_key_cache = r.json()
-        return self._api_key_cache
-
-    def _l2_auth_headers(self, method: str, path: str, body: str = "",
-                         api_key: str = "", secret: str = "", passphrase: str = "") -> dict:
-        """Generate L2 auth headers using HMAC-SHA256."""
-        ts  = str(int(time.time()))
-        msg = ts + method.upper() + path + body
-        sig = hmac.new(secret.encode(), msg.encode(), hashlib.sha256).hexdigest()
-        return {
-            "POLY-API-KEY":    api_key,
-            "POLY-TIMESTAMP":  ts,
-            "POLY-SIGNATURE":  sig,
-            "POLY-PASSPHRASE": passphrase,
-            "Content-Type":    "application/json",
         }
 
     # ── Public market data ────────────────────────────────────────────────────
@@ -250,43 +229,62 @@ class PolymarketClient:
         except Exception as e:
             return {"usdc": 0.0, "error": str(e)}
 
-    # ── Place order ───────────────────────────────────────────────────────────
+    # ── Place order (via py-clob-client) ──────────────────────────────────────
 
     async def place_order(self, token_id: str, side: str, price: float, size: float) -> dict:
         """
-        Place limit order di CLOB.
-        side: 'buy' atau 'sell'
+        Place limit order di CLOB via py-clob-client (handles EIP-712 signing).
+        side: 'BUY' atau 'SELL'
         price: 0.0-1.0 (bukan %)
         size: jumlah USDC
         """
         if not self.is_trading_configured():
             return {"error": "Private key belum dikonfigurasi (set POLY_PRIVATE_KEY)"}
+        if not _CLOB_CLIENT_AVAILABLE:
+            return {"error": "py-clob-client tidak terinstall. Tambahkan ke requirements.txt"}
         try:
-            # Get L2 API key (create if not cached)
-            creds = await self._ensure_api_key()
-            path  = "/order"
-            body_d = {
-                "tokenID":    token_id,
-                "side":       side.upper(),
-                "price":      str(price),
-                "size":       str(size),
-                "orderType":  "GTC",
-                "feeRateBps": "0",
-            }
-            body    = json.dumps(body_d, separators=(",", ":"))
-            headers = self._l2_auth_headers(
-                "POST", path, body,
-                api_key    = creds.get("apiKey", ""),
-                secret     = creds.get("secret", ""),
-                passphrase = creds.get("passphrase", ""),
-            )
-            async with _client() as client:
-                r = await client.post(f"{CLOB_URL}{path}", headers=headers, content=body)
-            if not r.is_success:
-                # If unauthorized, clear cache and return error
-                if r.status_code in (401, 403):
-                    self._api_key_cache = {}
-                return {"error": f"HTTP {r.status_code}: {r.text[:200]}"}
-            return r.json()
+            import asyncio
+            proxy = _get_proxy()
+
+            def _sync_place():
+                # Set proxy env vars so requests library pakai proxy
+                saved = {}
+                if proxy:
+                    for k in ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"):
+                        saved[k] = os.environ.get(k)
+                        os.environ[k] = proxy
+
+                try:
+                    client = _ClobClient(
+                        host=CLOB_URL,
+                        key=config.POLY_PRIVATE_KEY,
+                        chain_id=_POLYGON_CHAIN_ID,
+                        signature_type=0,        # 0 = EOA (MetaMask/direct wallet)
+                        funder=config.POLY_WALLET_ADDRESS,
+                    )
+                    # Create/derive L2 API credentials
+                    creds = client.create_or_derive_api_creds()
+                    client.set_api_creds(creds)
+
+                    order_args = _OrderArgs(
+                        token_id=token_id,
+                        price=price,
+                        size=size,
+                        side=side.upper(),
+                    )
+                    signed_order = client.create_order(order_args)
+                    resp = client.post_order(signed_order, _OrderType.GTC)
+                    return resp if isinstance(resp, dict) else {"success": True, "data": str(resp)}
+                finally:
+                    # Restore env vars
+                    if proxy:
+                        for k, v in saved.items():
+                            if v is None:
+                                os.environ.pop(k, None)
+                            else:
+                                os.environ[k] = v
+
+            loop = asyncio.get_running_loop()
+            return await loop.run_in_executor(None, _sync_place)
         except Exception as e:
             return {"error": str(e)}
