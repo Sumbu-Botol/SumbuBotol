@@ -186,7 +186,7 @@ class PolymarketClient:
         if not self.is_trading_configured():
             return {"usdc": 0.0, "error": "Private key belum dikonfigurasi (set POLY_PRIVATE_KEY)"}
         try:
-            path    = "/balance"
+            path    = f"/data/balance?address={config.POLY_WALLET_ADDRESS}"
             headers = self._auth_headers("GET", path)
             async with httpx.AsyncClient(timeout=15) as client:
                 r = await client.get(f"{CLOB_URL}{path}", headers=headers)
