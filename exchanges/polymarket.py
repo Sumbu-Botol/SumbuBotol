@@ -186,14 +186,23 @@ class PolymarketClient:
         if not self.is_trading_configured():
             return {"usdc": 0.0, "error": "Private key belum dikonfigurasi (set POLY_PRIVATE_KEY)"}
         try:
-            path    = f"/data/balance?address={config.POLY_WALLET_ADDRESS}"
-            headers = self._auth_headers("GET", path)
+            # CLOB API balance — try multiple known endpoints
             async with httpx.AsyncClient(timeout=15) as client:
+                # Try authenticated endpoint first
+                path = "/balance"
+                headers = self._auth_headers("GET", path)
                 r = await client.get(f"{CLOB_URL}{path}", headers=headers)
+                if r.status_code == 404:
+                    # Fallback: get from data API (public)
+                    r = await client.get(
+                        f"https://data-api.polymarket.com/balance",
+                        params={"address": config.POLY_WALLET_ADDRESS}
+                    )
             if not r.is_success:
-                return {"usdc": 0.0, "error": f"HTTP {r.status_code}: {r.text[:200]}"}
+                return {"usdc": 0.0, "error": f"HTTP {r.status_code}: {r.text[:100]}"}
             data = r.json()
-            return {"usdc": float(data.get("balance", 0))}
+            bal = data.get("balance", data.get("usdc", data if isinstance(data, (int, float)) else 0))
+            return {"usdc": float(bal)}
         except Exception as e:
             return {"usdc": 0.0, "error": str(e)}
 
