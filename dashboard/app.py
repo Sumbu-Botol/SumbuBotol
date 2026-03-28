@@ -610,6 +610,29 @@ async def poly_markets(request: Request, limit: int = 20):
     except Exception as e:
         return {"error": str(e), "markets": []}
 
+@app.get("/api/polymarket/debug-raw")
+async def poly_debug_raw(request: Request):
+    """Debug: tampilkan raw Gamma API response untuk 2 market pertama."""
+    if not check_auth(request):
+        raise HTTPException(status_code=401)
+    import httpx
+    async with httpx.AsyncClient(timeout=15) as client:
+        r = await client.get("https://gamma-api.polymarket.com/markets", params={
+            "active": "true", "closed": "false",
+            "order": "volume24hr", "ascending": "false", "limit": 2,
+        })
+    raw = r.json() if r.is_success else []
+    result = []
+    for m in raw[:2]:
+        result.append({
+            "question": m.get("question", "")[:80],
+            "tokens": m.get("tokens", []),
+            "outcomePrices": m.get("outcomePrices"),
+            "outcomes": m.get("outcomes"),
+            "conditionId": m.get("conditionId", ""),
+        })
+    return result
+
 @app.get("/api/polymarket/positions")
 async def poly_positions(request: Request):
     if not check_auth(request):
