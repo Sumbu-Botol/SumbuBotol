@@ -252,7 +252,7 @@ class PolymarketClient:
                     host=CLOB_URL,
                     key=config.POLY_PRIVATE_KEY,
                     chain_id=_POLYGON_CHAIN_ID,
-                    signature_type=0,        # 0 = EOA (direct MetaMask wallet)
+                    signature_type=1,        # 1 = POLY_PROXY (funder=proxy wallet, signer=EOA)
                     funder=config.POLY_WALLET_ADDRESS,
                 )
                 creds = client.create_or_derive_api_creds()
@@ -297,7 +297,7 @@ class PolymarketClient:
                         host=CLOB_URL,
                         key=config.POLY_PRIVATE_KEY,
                         chain_id=_POLYGON_CHAIN_ID,
-                        signature_type=0,        # 0 = EOA (direct MetaMask wallet)
+                        signature_type=1,        # 1 = POLY_PROXY (funder=proxy wallet, signer=EOA)
                         funder=config.POLY_WALLET_ADDRESS,
                     )
                     # Create/derive L2 API credentials
