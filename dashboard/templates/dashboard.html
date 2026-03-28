@@ -526,13 +526,13 @@ async function loadPoly() {
         <span class="text-[10px] text-gray-500">Vol $${(m.volume_24h/1000).toFixed(0)}k/24h</span>
       </div>
       <div class="flex gap-2">
-        <button onclick="buyOutcome('${m.yes_token_id}', 'YES', ${m.yes_price})"
+        <button onclick="buyOutcome('${m.yes_token_id}', '${m.yes_label}', ${m.yes_price})"
                 class="flex-1 bg-green-800 hover:bg-green-700 text-green-100 py-2 rounded-lg text-sm font-bold">
-          YES ${m.yes_price}%
+          ${m.yes_label} ${m.yes_price}%
         </button>
-        <button onclick="buyOutcome('${m.no_token_id}', 'NO', ${m.no_price})"
+        <button onclick="buyOutcome('${m.no_token_id}', '${m.no_label}', ${m.no_price})"
                 class="flex-1 bg-red-800 hover:bg-red-700 text-red-100 py-2 rounded-lg text-sm font-bold">
-          NO ${m.no_price}%
+          ${m.no_label} ${m.no_price}%
         </button>
       </div>
     </div>

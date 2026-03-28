@@ -82,23 +82,33 @@ class PolymarketClient:
                     no_token_id  = t.get("token_id", "")
                     no_price     = float(t.get("price", 0) or 0)
 
-            # Fallback: Gamma API stores prices in outcomePrices as JSON string
+            # Gamma API stores prices in outcomePrices as JSON string
             # e.g. outcomePrices='["0.95","0.05"]', outcomes='["Yes","No"]'
-            if yes_price == 0 and no_price == 0:
-                try:
-                    raw_prices   = m.get("outcomePrices", "[]")
-                    raw_outcomes = m.get("outcomes", "[]")
-                    prices_list   = json.loads(raw_prices)   if isinstance(raw_prices, str)   else raw_prices
-                    outcomes_list = json.loads(raw_outcomes) if isinstance(raw_outcomes, str) else raw_outcomes
-                    for idx, oc in enumerate(outcomes_list):
-                        if idx < len(prices_list):
-                            p = float(prices_list[idx] or 0)
-                            if oc.lower() == "yes":
-                                yes_price = p
-                            elif oc.lower() == "no":
-                                no_price = p
-                except Exception:
-                    pass
+            # For sports markets outcomes can be team names, not yes/no
+            yes_label = "YES"
+            no_label  = "NO"
+            try:
+                raw_prices   = m.get("outcomePrices", "[]")
+                raw_outcomes = m.get("outcomes", "[]")
+                prices_list   = json.loads(raw_prices)   if isinstance(raw_prices, str)   else (raw_prices or [])
+                outcomes_list = json.loads(raw_outcomes) if isinstance(raw_outcomes, str) else (raw_outcomes or [])
+
+                for idx, oc in enumerate(outcomes_list):
+                    if idx < len(prices_list):
+                        p = float(prices_list[idx] or 0)
+                        if oc.lower() == "yes":
+                            yes_price = p
+                        elif oc.lower() == "no":
+                            no_price = p
+
+                # If still 0 (sports/non-binary), use first two outcomes
+                if yes_price == 0 and no_price == 0 and len(outcomes_list) >= 2:
+                    yes_price = float(prices_list[0] or 0) if len(prices_list) > 0 else 0
+                    no_price  = float(prices_list[1] or 0) if len(prices_list) > 1 else 0
+                    yes_label = outcomes_list[0][:12]  # potong bila terlalu panjang
+                    no_label  = outcomes_list[1][:12]
+            except Exception:
+                pass
 
             result.append({
                 "id":           m.get("id", ""),
@@ -107,6 +117,8 @@ class PolymarketClient:
                 "category":     m.get("groupItemTitle") or m.get("category", ""),
                 "yes_price":    round(yes_price * 100, 1),   # dalam %
                 "no_price":     round(no_price * 100, 1),
+                "yes_label":    yes_label,
+                "no_label":     no_label,
                 "yes_token_id": yes_token_id,
                 "no_token_id":  no_token_id,
                 "volume_24h":   float(m.get("volume24hr", 0) or 0),
