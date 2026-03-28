@@ -3,7 +3,7 @@ import os
 # ──────────────────────────────────────────
 # ACTIVE EXCHANGE  (bybit | hyperliquid)
 # ──────────────────────────────────────────
-ACTIVE_EXCHANGE  = os.getenv("ACTIVE_EXCHANGE", "bybit")
+ACTIVE_EXCHANGE  = os.getenv("ACTIVE_EXCHANGE", "bybit")  # bybit | hyperliquid | polymarket
 
 # ──────────────────────────────────────────
 # BYBIT
@@ -24,6 +24,17 @@ BYBIT_BASE_URL   = os.getenv("BYBIT_BASE_URL", "https://api.bybit.com")
 HL_WALLET_ADDRESS = os.getenv("HL_WALLET_ADDRESS", "")
 HL_PRIVATE_KEY    = os.getenv("HL_PRIVATE_KEY", "")
 HL_TESTNET        = os.getenv("HL_TESTNET", "true").lower() == "true"
+
+# ──────────────────────────────────────────
+# POLYMARKET
+# ──────────────────────────────────────────
+POLY_PRIVATE_KEY     = os.getenv("POLY_PRIVATE_KEY", "")
+POLY_WALLET_ADDRESS  = os.getenv("POLY_WALLET_ADDRESS", "")
+POLY_API_KEY         = os.getenv("POLY_API_KEY", "")
+POLY_API_SECRET      = os.getenv("POLY_API_SECRET", "")
+POLY_API_PASSPHRASE  = os.getenv("POLY_API_PASSPHRASE", "")
+POLY_BOT_SIZE        = float(os.getenv("POLY_BOT_SIZE", "10"))
+POLY_BOT_MAX_MARKETS = int(os.getenv("POLY_BOT_MAX_MARKETS", "5"))
 
 # ──────────────────────────────────────────
 # TELEGRAM

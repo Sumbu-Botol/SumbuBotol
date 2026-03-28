@@ -24,6 +24,7 @@ serializer = URLSafeTimedSerializer(config.DASHBOARD_PASSWORD)
 # Global references (diset dari main.py)
 _bot_runner        = None
 _bybit_bot_runner  = None
+_polymarket_runner = None
 _news_fetcher: NewsFetcher = None
 _ws_clients: list[WebSocket] = []
 
@@ -34,6 +35,10 @@ def set_bot_runner(runner):
 def set_bybit_bot_runner(runner):
     global _bybit_bot_runner
     _bybit_bot_runner = runner
+
+def set_polymarket_runner(runner):
+    global _polymarket_runner
+    _polymarket_runner = runner
 
 def set_news_fetcher(fetcher: NewsFetcher):
     global _news_fetcher
@@ -122,6 +127,7 @@ async def dashboard(request: Request, db: AsyncSession = Depends(get_db)):
         "active_persona":    get_persona(config.ACTIVE_PERSONA),
         "active_exchange":   config.ACTIVE_EXCHANGE,
         "config":            config,
+        "poly_configured":   bool(config.POLY_WALLET_ADDRESS),
         "now":               datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%M UTC"),
     })
 
@@ -584,10 +590,58 @@ async def exchange_switch(request: Request):
         raise HTTPException(status_code=401)
     d = await request.json()
     ex = d.get("exchange", "bybit")
-    if ex not in ("bybit", "hyperliquid"):
+    if ex not in ("bybit", "hyperliquid", "polymarket"):
         raise HTTPException(status_code=400, detail="Invalid exchange")
     config.ACTIVE_EXCHANGE = ex
     return {"active_exchange": ex}
+
+# ── Polymarket routes ─────────────────────────────────────────────────────
+
+def _poly():
+    from exchanges.polymarket import PolymarketClient
+    return PolymarketClient()
+
+@app.get("/api/polymarket/markets")
+async def poly_markets(request: Request, limit: int = 20):
+    if not check_auth(request):
+        raise HTTPException(status_code=401)
+    try:
+        return await _poly().get_popular_markets(limit)
+    except Exception as e:
+        return {"error": str(e), "markets": []}
+
+@app.get("/api/polymarket/positions")
+async def poly_positions(request: Request):
+    if not check_auth(request):
+        raise HTTPException(status_code=401)
+    try:
+        return await _poly().get_positions()
+    except Exception as e:
+        return {"error": str(e), "positions": []}
+
+@app.get("/api/polymarket/balance")
+async def poly_balance(request: Request):
+    if not check_auth(request):
+        raise HTTPException(status_code=401)
+    try:
+        return await _poly().get_balance()
+    except Exception as e:
+        return {"error": str(e)}
+
+@app.post("/api/polymarket/order")
+async def poly_order(request: Request):
+    if not check_auth(request):
+        raise HTTPException(status_code=401)
+    try:
+        d = await request.json()
+        return await _poly().place_order(
+            token_id=d["token_id"],
+            side=d["side"],
+            price=float(d["price"]) / 100,   # convert % to decimal
+            size=float(d["size"]),
+        )
+    except Exception as e:
+        return {"error": str(e)}
 
 # ── News routes ──────────────────────────────────────────────────────────────
 

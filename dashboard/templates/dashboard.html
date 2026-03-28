@@ -29,6 +29,11 @@
               class="px-3 py-2 transition-all {% if active_exchange == 'hyperliquid' %}bg-yellow-400 text-black{% else %}bg-gray-800 text-gray-400 hover:text-white{% endif %}">
         Hyperliquid
       </button>
+      <button onclick="switchExchange('polymarket')"
+              id="btn-polymarket"
+              class="px-3 py-2 transition-all {% if active_exchange == 'polymarket' %}bg-blue-500 text-white{% else %}bg-gray-800 text-gray-400 hover:text-white{% endif %}">
+        Polymarket
+      </button>
     </div>
     <span class="text-gray-600">|</span>
     {% if active_exchange == 'bybit' %}
@@ -108,6 +113,24 @@
 
   <div id="bybitPositions">
     <p class="text-gray-600 text-sm">Memuat posisi...</p>
+  </div>
+</div>
+
+<!-- Polymarket Panel -->
+<div class="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-6" id="polyPanel">
+  <div class="flex items-center justify-between mb-3">
+    <h3 class="text-sm font-bold text-gray-400">Polymarket — Popular Markets</h3>
+    <button onclick="loadPoly()" class="text-xs text-blue-400 hover:underline">↻ Refresh</button>
+  </div>
+  <p class="text-xs text-gray-500 mb-3" id="polyBalanceLabel"></p>
+
+  <!-- Positions -->
+  <div id="polyPositions" class="mb-4"></div>
+
+  <!-- Popular Markets -->
+  <h4 class="text-xs text-gray-500 mb-2 font-semibold uppercase tracking-wide">Top Markets by Volume</h4>
+  <div id="polyMarkets">
+    <p class="text-gray-600 text-sm">Memuat markets...</p>
   </div>
 </div>
 
@@ -446,5 +469,92 @@ setInterval(async () => {
     el.textContent = `$${s.balance.toFixed(2)}`;
   });
 }, 30000);
+
+// ── Polymarket ─────────────────────────────────────────────────────────────
+async function loadPoly() {
+  const [marketsResp, posResp, balResp] = await Promise.all([
+    fetch('/api/polymarket/markets?limit=15', {credentials: 'same-origin'}),
+    fetch('/api/polymarket/positions', {credentials: 'same-origin'}),
+    fetch('/api/polymarket/balance', {credentials: 'same-origin'}),
+  ]);
+
+  const markets   = await marketsResp.json();
+  const positions = await posResp.json();
+  const bal       = await balResp.json();
+
+  // Balance
+  if (bal && !bal.error) {
+    document.getElementById('polyBalanceLabel').textContent = `Balance: $${(bal.usdc || 0).toFixed(2)} USDC`;
+  }
+
+  // Positions
+  const posEl = document.getElementById('polyPositions');
+  const posList = Array.isArray(positions) ? positions : [];
+  if (posList.length) {
+    posEl.innerHTML = `
+      <h4 class="text-xs text-gray-500 mb-2 font-semibold uppercase tracking-wide">Posisi Aktif</h4>
+      ${posList.map(p => {
+        const pnlColor = p.pnl >= 0 ? 'text-green-400' : 'text-red-400';
+        return `
+        <div class="border border-gray-700 rounded-lg p-3 mb-2 bg-gray-800/40">
+          <p class="text-xs text-white font-medium mb-1">${p.market}</p>
+          <div class="flex justify-between text-xs">
+            <span class="${p.outcome === 'Yes' ? 'text-green-400' : 'text-red-400'} font-bold">${p.outcome}</span>
+            <span class="text-gray-400">${p.size.toFixed(2)} shares @ ${p.avg_price}%</span>
+            <span class="${pnlColor}">${p.pnl >= 0 ? '+' : ''}$${p.pnl.toFixed(2)}</span>
+          </div>
+        </div>`;
+      }).join('')}
+    `;
+  } else {
+    posEl.innerHTML = '';
+  }
+
+  // Markets
+  const el = document.getElementById('polyMarkets');
+  const mList = Array.isArray(markets) ? markets : [];
+  if (!mList.length) {
+    el.innerHTML = '<p class="text-gray-600 text-sm">Tidak ada data market.</p>';
+    return;
+  }
+  el.innerHTML = mList.map(m => `
+    <div class="border border-gray-700 rounded-xl p-3 mb-3 bg-gray-800/40">
+      <p class="text-xs text-white font-medium mb-2 leading-tight">${m.question}</p>
+      <div class="flex items-center gap-2 mb-2 flex-wrap">
+        ${m.category ? `<span class="text-[10px] bg-gray-700 text-gray-300 px-2 py-0.5 rounded">${m.category}</span>` : ''}
+        ${m.end_date ? `<span class="text-[10px] text-gray-500">Ends ${m.end_date}</span>` : ''}
+        <span class="text-[10px] text-gray-500">Vol $${(m.volume_24h/1000).toFixed(0)}k/24h</span>
+      </div>
+      <div class="flex gap-2">
+        <button onclick="buyOutcome('${m.yes_token_id}', 'YES', ${m.yes_price})"
+                class="flex-1 bg-green-800 hover:bg-green-700 text-green-100 py-2 rounded-lg text-sm font-bold">
+          YES ${m.yes_price}%
+        </button>
+        <button onclick="buyOutcome('${m.no_token_id}', 'NO', ${m.no_price})"
+                class="flex-1 bg-red-800 hover:bg-red-700 text-red-100 py-2 rounded-lg text-sm font-bold">
+          NO ${m.no_price}%
+        </button>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function buyOutcome(tokenId, outcome, price) {
+  if (!tokenId) { alert('Token ID tidak tersedia untuk market ini'); return; }
+  const size = prompt(`Beli ${outcome} @ ${price}%\nMasukkan jumlah USDC (contoh: 10):`);
+  if (!size || isNaN(size)) return;
+  if (!confirm(`Beli ${outcome} sebesar $${size} USDC @ ${price}%?`)) return;
+  const r = await fetch('/api/polymarket/order', {
+    method: 'POST', credentials: 'same-origin',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({token_id: tokenId, side: 'buy', price, size: Number(size)}),
+  });
+  const d = await r.json();
+  if (d.error) alert('Error: ' + d.error);
+  else { alert('Order dikirim!'); loadPoly(); }
+}
+
+// Load Polymarket data on page load (panel always present, data loads regardless of active exchange)
+loadPoly();
 </script>
 {% endblock %}
