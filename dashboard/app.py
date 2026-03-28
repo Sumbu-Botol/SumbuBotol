@@ -657,6 +657,38 @@ async def poly_balance(request: Request):
     except Exception as e:
         return {"error": str(e)}
 
+@app.get("/api/polymarket/history")
+async def poly_history(request: Request, limit: int = 20):
+    """Riwayat trade Polymarket berdasarkan wallet address."""
+    if not check_auth(request):
+        raise HTTPException(status_code=401)
+    if not config.POLY_WALLET_ADDRESS:
+        return {"error": "POLY_WALLET_ADDRESS belum diset", "trades": []}
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=15) as client:
+            r = await client.get("https://gamma-api.polymarket.com/trades", params={
+                "user":  config.POLY_WALLET_ADDRESS,
+                "limit": limit,
+            })
+        if not r.is_success:
+            return {"error": f"HTTP {r.status_code}", "wallet": config.POLY_WALLET_ADDRESS, "trades": []}
+        data = r.json()
+        trades = data if isinstance(data, list) else data.get("data", [])
+        result = []
+        for t in trades:
+            result.append({
+                "market":    t.get("market", {}).get("question", "") if isinstance(t.get("market"), dict) else t.get("title", ""),
+                "outcome":   t.get("outcome", ""),
+                "side":      t.get("side", ""),
+                "price":     round(float(t.get("price", 0) or 0) * 100, 1),
+                "size":      float(t.get("size", 0) or 0),
+                "timestamp": t.get("timestamp", ""),
+            })
+        return {"wallet": config.POLY_WALLET_ADDRESS[:10] + "...", "trade_count": len(result), "trades": result}
+    except Exception as e:
+        return {"error": str(e), "trades": []}
+
 @app.post("/api/polymarket/order")
 async def poly_order(request: Request):
     if not check_auth(request):
