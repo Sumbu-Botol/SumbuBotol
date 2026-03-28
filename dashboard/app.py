@@ -686,6 +686,12 @@ async def poly_verify_key(request: Request):
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
+@app.get("/api/polymarket/test-auth")
+async def poly_test_auth(request: Request):
+    """Test full auth flow: buat API key via py-clob-client."""
+    if not check_auth(request): raise HTTPException(status_code=401)
+    return await _poly().test_auth()
+
 @app.get("/api/polymarket/history")
 async def poly_history(request: Request, limit: int = 20):
     """Riwayat trade Polymarket berdasarkan wallet address."""

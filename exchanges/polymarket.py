@@ -231,6 +231,49 @@ class PolymarketClient:
 
     # ── Place order (via py-clob-client) ──────────────────────────────────────
 
+    async def test_auth(self) -> dict:
+        """Test autentikasi: buat API key via L1, cek apakah wallet terdaftar di CLOB."""
+        if not self.is_trading_configured():
+            return {"error": "Private key belum dikonfigurasi"}
+        if not _CLOB_CLIENT_AVAILABLE:
+            return {"error": "py-clob-client tidak terinstall"}
+        import asyncio
+        proxy = _get_proxy()
+
+        def _sync():
+            saved = {}
+            if proxy:
+                for k in ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"):
+                    saved[k] = os.environ.get(k)
+                    os.environ[k] = proxy
+            try:
+                client = _ClobClient(
+                    host=CLOB_URL,
+                    key=config.POLY_PRIVATE_KEY,
+                    chain_id=_POLYGON_CHAIN_ID,
+                    signature_type=0,
+                    funder=config.POLY_WALLET_ADDRESS,
+                )
+                creds = client.create_or_derive_api_creds()
+                return {
+                    "ok":         True,
+                    "api_key":    creds.api_key[:8] + "…" if hasattr(creds, "api_key") else str(creds)[:30],
+                    "wallet":     config.POLY_WALLET_ADDRESS,
+                    "proxy_used": bool(proxy),
+                }
+            except Exception as e:
+                return {"ok": False, "error": str(e), "proxy_used": bool(proxy)}
+            finally:
+                if proxy:
+                    for k, v in saved.items():
+                        if v is None:
+                            os.environ.pop(k, None)
+                        else:
+                            os.environ[k] = v
+
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, _sync)
+
     async def place_order(self, token_id: str, side: str, price: float, size: float) -> dict:
         """
         Place limit order di CLOB via py-clob-client (handles EIP-712 signing).
@@ -274,7 +317,12 @@ class PolymarketClient:
                     )
                     signed_order = client.create_order(order_args)
                     resp = client.post_order(signed_order, _OrderType.GTC)
-                    return resp if isinstance(resp, dict) else {"success": True, "data": str(resp)}
+                    if isinstance(resp, dict):
+                        # Normalize error key
+                        if "errorMsg" in resp and "error" not in resp:
+                            resp["error"] = resp["errorMsg"]
+                        return resp
+                    return {"success": True, "data": str(resp)}
                 finally:
                     # Restore env vars
                     if proxy:
