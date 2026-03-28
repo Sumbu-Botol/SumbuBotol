@@ -27,6 +27,14 @@ GAMMA_URL = "https://gamma-api.polymarket.com"
 CLOB_URL  = "https://clob.polymarket.com"
 
 
+def _client(**kwargs) -> httpx.AsyncClient:
+    """Buat httpx client, pakai proxy POLY_PROXY kalau diset."""
+    proxy = getattr(config, "POLY_PROXY", "") or ""
+    if proxy:
+        return httpx.AsyncClient(proxy=proxy, timeout=15, **kwargs)
+    return httpx.AsyncClient(timeout=15, **kwargs)
+
+
 class PolymarketClient:
 
     def is_configured(self) -> bool:
@@ -65,7 +73,7 @@ class PolymarketClient:
 
     async def get_popular_markets(self, limit: int = 20) -> list:
         """Ambil market populer berdasarkan volume 24h."""
-        async with httpx.AsyncClient(timeout=20) as client:
+        async with _client(timeout=20) as client:
             r = await client.get(f"{GAMMA_URL}/markets", params={
                 "active":    "true",
                 "closed":    "false",
@@ -152,7 +160,7 @@ class PolymarketClient:
         if not config.POLY_WALLET_ADDRESS:
             return []
         try:
-            async with httpx.AsyncClient(timeout=15) as client:
+            async with _client() as client:
                 r = await client.get(f"{GAMMA_URL}/positions", params={
                     "user":          config.POLY_WALLET_ADDRESS,
                     "sizeThreshold": "0.01",
@@ -187,7 +195,7 @@ class PolymarketClient:
             return {"usdc": 0.0, "error": "Private key belum dikonfigurasi (set POLY_PRIVATE_KEY)"}
         try:
             # CLOB API balance — try multiple known endpoints
-            async with httpx.AsyncClient(timeout=15) as client:
+            async with _client() as client:
                 # Try authenticated endpoint first
                 path = "/balance"
                 headers = self._auth_headers("GET", path)
@@ -229,7 +237,7 @@ class PolymarketClient:
             }
             body    = json.dumps(body_d)
             headers = self._auth_headers("POST", path, body)
-            async with httpx.AsyncClient(timeout=15) as client:
+            async with _client() as client:
                 r = await client.post(f"{CLOB_URL}{path}", headers=headers, content=body)
             return r.json()
         except Exception as e:
