@@ -28,11 +28,8 @@ HL_TESTNET        = os.getenv("HL_TESTNET", "true").lower() == "true"
 # ──────────────────────────────────────────
 # POLYMARKET
 # ──────────────────────────────────────────
-POLY_PRIVATE_KEY     = os.getenv("POLY_PRIVATE_KEY", "")
 POLY_WALLET_ADDRESS  = os.getenv("POLY_WALLET_ADDRESS", "")
-POLY_API_KEY         = os.getenv("POLY_API_KEY", "")
-POLY_API_SECRET      = os.getenv("POLY_API_SECRET", "")
-POLY_API_PASSPHRASE  = os.getenv("POLY_API_PASSPHRASE", "")
+POLY_PRIVATE_KEY     = os.getenv("POLY_PRIVATE_KEY", "")   # untuk trading (L1 auth)
 POLY_BOT_SIZE        = float(os.getenv("POLY_BOT_SIZE", "10"))
 POLY_BOT_MAX_MARKETS = int(os.getenv("POLY_BOT_MAX_MARKETS", "5"))
 

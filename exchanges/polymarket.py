@@ -3,19 +3,25 @@ Polymarket CLOB Client
 ======================
 Mendukung:
 - Gamma API (public): market data, popular markets, positions by wallet
-- CLOB API (authenticated): balance, order placement
+- CLOB API (L1 auth via private key): balance, order placement
 
-Autentikasi: API Key + Secret + Passphrase (derived from private key)
+Autentikasi L1: sign setiap request pakai ETH private key (eth-account).
+Tidak perlu API key/secret/passphrase terpisah.
+Cukup set: POLY_WALLET_ADDRESS + POLY_PRIVATE_KEY
 """
 import httpx
 import time
 import json
-import hmac
-import hashlib
-import base64
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 import config
+
+try:
+    from eth_account import Account
+    from eth_account.messages import encode_defunct
+    _ETH_AVAILABLE = True
+except ImportError:
+    _ETH_AVAILABLE = False
 
 GAMMA_URL = "https://gamma-api.polymarket.com"
 CLOB_URL  = "https://clob.polymarket.com"
@@ -27,22 +33,22 @@ class PolymarketClient:
         return bool(config.POLY_WALLET_ADDRESS)
 
     def is_trading_configured(self) -> bool:
-        return bool(config.POLY_API_KEY and config.POLY_API_SECRET and config.POLY_API_PASSPHRASE)
+        return bool(config.POLY_PRIVATE_KEY and config.POLY_WALLET_ADDRESS and _ETH_AVAILABLE)
 
-    # ── Auth headers ──────────────────────────────────────────────────────────
+    # ── L1 Auth headers (sign with private key) ───────────────────────────────
 
     def _auth_headers(self, method: str, path: str, body: str = "") -> dict:
-        """Generate L2 auth headers for CLOB API."""
-        ts        = str(int(time.time() * 1000))
-        msg       = ts + method.upper() + path + body
-        secret_b  = base64.b64decode(config.POLY_API_SECRET + "==")
-        sig       = base64.b64encode(hmac.new(secret_b, msg.encode(), hashlib.sha256).digest()).decode()
+        """Generate L1 auth headers for CLOB API using ETH private key."""
+        ts  = str(int(time.time()))
+        msg = ts + method.upper() + path + body
+        message = encode_defunct(text=msg)
+        signed  = Account.sign_message(message, private_key=config.POLY_PRIVATE_KEY)
+        sig     = signed.signature.hex()
         return {
-            "POLY-API-KEY":        config.POLY_API_KEY,
-            "POLY-TIMESTAMP":      ts,
-            "POLY-SIGNATURE":      sig,
-            "POLY-PASSPHRASE":     config.POLY_API_PASSPHRASE,
-            "Content-Type":        "application/json",
+            "POLY-ADDRESS":   config.POLY_WALLET_ADDRESS,
+            "POLY-TIMESTAMP": ts,
+            "POLY-SIGNATURE": sig,
+            "Content-Type":   "application/json",
         }
 
     # ── Public market data ────────────────────────────────────────────────────
@@ -127,14 +133,14 @@ class PolymarketClient:
     async def get_balance(self) -> dict:
         """Ambil USDC balance dari CLOB API."""
         if not self.is_trading_configured():
-            return {"usdc": 0.0, "error": "API key belum dikonfigurasi"}
+            return {"usdc": 0.0, "error": "Private key belum dikonfigurasi (set POLY_PRIVATE_KEY)"}
         try:
-            path = "/balance"
+            path    = "/balance"
             headers = self._auth_headers("GET", path)
             async with httpx.AsyncClient(timeout=15) as client:
                 r = await client.get(f"{CLOB_URL}{path}", headers=headers)
             if not r.is_success:
-                return {"usdc": 0.0, "error": f"HTTP {r.status_code}"}
+                return {"usdc": 0.0, "error": f"HTTP {r.status_code}: {r.text[:200]}"}
             data = r.json()
             return {"usdc": float(data.get("balance", 0))}
         except Exception as e:
@@ -150,15 +156,15 @@ class PolymarketClient:
         size: jumlah USDC
         """
         if not self.is_trading_configured():
-            return {"error": "API key belum dikonfigurasi"}
+            return {"error": "Private key belum dikonfigurasi (set POLY_PRIVATE_KEY)"}
         try:
-            path    = "/order"
-            body_d  = {
-                "tokenID":   token_id,
-                "side":      side.upper(),
-                "price":     str(price),
-                "size":      str(size),
-                "orderType": "GTC",
+            path   = "/order"
+            body_d = {
+                "tokenID":    token_id,
+                "side":       side.upper(),
+                "price":      str(price),
+                "size":       str(size),
+                "orderType":  "GTC",
                 "feeRateBps": "0",
             }
             body    = json.dumps(body_d)
