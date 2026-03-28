@@ -152,7 +152,8 @@ class BybitClient:
     # ── Position Mode ─────────────────────────────────────────────────────────
 
     async def _get_position_mode(self, symbol: str) -> str:
-        """Return 'BothSide' (hedge) atau 'MergedSingle' (one-way)."""
+        """Return 'BothSide' (hedge) atau 'MergedSingle' (one-way).
+        Coba detect dari posisi aktif; kalau kosong, coba query account info."""
         try:
             ts  = str(int(time.time() * 1000))
             qs  = f"category=linear&symbol={symbol}"
@@ -162,13 +163,27 @@ class BybitClient:
                     f"{_base_url()}/v5/position/list?{qs}",
                     headers=_headers(ts, sig),
                 )
-            data = r.json()
+            data  = r.json()
             items = data.get("result", {}).get("list", [])
             if items:
                 return items[0].get("positionMode", "MergedSingle")
+
+            # Tidak ada posisi — coba query tanpa filter symbol untuk detect mode
+            ts2  = str(int(time.time() * 1000))
+            qs2  = "category=linear&settleCoin=USDT&limit=1"
+            sig2 = _sign(config.BYBIT_API_SECRET, ts2, qs2)
+            async with _client() as client:
+                r2 = await client.get(
+                    f"{_base_url()}/v5/position/list?{qs2}",
+                    headers=_headers(ts2, sig2),
+                )
+            data2  = r2.json()
+            items2 = data2.get("result", {}).get("list", [])
+            if items2:
+                return items2[0].get("positionMode", "BothSide")
         except Exception:
             pass
-        return "MergedSingle"  # default one-way
+        return "BothSide"  # default hedge mode (lebih umum di akun futures)
 
     # ── Orders ────────────────────────────────────────────────────────────────
 
