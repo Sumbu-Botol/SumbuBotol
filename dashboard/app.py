@@ -667,10 +667,16 @@ async def poly_history(request: Request, limit: int = 20):
     try:
         import httpx
         async with httpx.AsyncClient(timeout=15) as client:
+            # Coba beberapa endpoint Gamma API untuk trade history
             r = await client.get("https://gamma-api.polymarket.com/trades", params={
-                "user":  config.POLY_WALLET_ADDRESS,
+                "taker": config.POLY_WALLET_ADDRESS,
                 "limit": limit,
             })
+            if r.status_code == 404:
+                r = await client.get("https://data-api.polymarket.com/activity", params={
+                    "user":  config.POLY_WALLET_ADDRESS,
+                    "limit": limit,
+                })
         if not r.is_success:
             return {"error": f"HTTP {r.status_code}", "wallet": config.POLY_WALLET_ADDRESS, "trades": []}
         data = r.json()
