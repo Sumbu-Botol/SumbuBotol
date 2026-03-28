@@ -205,30 +205,50 @@ class PolymarketClient:
     # ── Balance ───────────────────────────────────────────────────────────────
 
     async def get_balance(self) -> dict:
-        """Ambil USDC balance dari data API untuk kedua wallet."""
-        addresses = {"eoa": config.POLY_WALLET_ADDRESS}
-        if config.POLY_PROXY_ADDRESS:
-            addresses["proxy"] = config.POLY_PROXY_ADDRESS
-        result = {}
-        try:
-            async with _client() as client:
-                for label, addr in addresses.items():
-                    if not addr:
-                        continue
-                    r = await client.get(
-                        "https://data-api.polymarket.com/balance",
-                        params={"address": addr}
+        """Ambil USDC balance via CLOB API (authenticated) untuk EOA dan proxy wallet."""
+        if not self.is_trading_configured() or not _CLOB_CLIENT_AVAILABLE:
+            return {"usdc": 0.0, "error": "Not configured"}
+        proxy = _get_proxy()
+
+        def _sync():
+            if proxy:
+                try:
+                    import py_clob_client.http_helpers.helpers as _h
+                    _h._http_client = httpx.Client(proxy=proxy, timeout=15)
+                except Exception:
+                    pass
+            results = {}
+            for label, sig_type, funder in [
+                ("eoa",   0, config.POLY_WALLET_ADDRESS),
+                ("proxy", 1, config.POLY_PROXY_ADDRESS),
+            ]:
+                if not funder:
+                    continue
+                try:
+                    c = _ClobClient(
+                        host=CLOB_URL,
+                        key=config.POLY_PRIVATE_KEY,
+                        chain_id=_POLYGON_CHAIN_ID,
+                        signature_type=sig_type,
+                        funder=funder,
                     )
-                    if r.is_success:
-                        data = r.json()
-                        bal = data.get("balance", data.get("usdc", data if isinstance(data, (int, float)) else 0))
-                        result[label] = {"address": addr[:10] + "...", "usdc": float(bal or 0)}
-                    else:
-                        result[label] = {"address": addr[:10] + "...", "usdc": 0.0, "error": f"HTTP {r.status_code}"}
-            usdc = max(v.get("usdc", 0) for v in result.values()) if result else 0.0
-            return {"usdc": usdc, "detail": result}
-        except Exception as e:
-            return {"usdc": 0.0, "error": str(e)}
+                    try:
+                        creds = c.create_api_key()
+                    except Exception:
+                        creds = c.derive_api_key()
+                    c.set_api_creds(creds)
+                    bal = c.get_balance_allowance({"asset_type": "USDC"})
+                    usdc = float(bal.get("balance", 0) or 0) / 1e6
+                    results[label] = {"address": funder[:10] + "...", "usdc": usdc}
+                except Exception as e:
+                    results[label] = {"address": funder[:10] + "...", "usdc": 0.0, "error": str(e)[:80]}
+            return results
+
+        import asyncio
+        loop = asyncio.get_running_loop()
+        detail = await loop.run_in_executor(None, _sync)
+        usdc = max((v.get("usdc", 0) for v in detail.values()), default=0.0)
+        return {"usdc": usdc, "detail": detail}
 
     # ── Place order (via py-clob-client) ──────────────────────────────────────
 
