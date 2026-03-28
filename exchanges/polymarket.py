@@ -241,11 +241,12 @@ class PolymarketClient:
         proxy = _get_proxy()
 
         def _sync():
-            saved = {}
             if proxy:
-                for k in ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"):
-                    saved[k] = os.environ.get(k)
-                    os.environ[k] = proxy
+                try:
+                    import py_clob_client.http_helpers.helpers as _h
+                    _h._http_client = httpx.Client(proxy=proxy, timeout=15)
+                except Exception:
+                    pass
             try:
                 client = _ClobClient(
                     host=CLOB_URL,
@@ -263,13 +264,6 @@ class PolymarketClient:
                 }
             except Exception as e:
                 return {"ok": False, "error": str(e), "proxy_used": bool(proxy)}
-            finally:
-                if proxy:
-                    for k, v in saved.items():
-                        if v is None:
-                            os.environ.pop(k, None)
-                        else:
-                            os.environ[k] = v
 
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, _sync)
@@ -290,12 +284,13 @@ class PolymarketClient:
             proxy = _get_proxy()
 
             def _sync_place():
-                # Set proxy env vars so requests library pakai proxy
-                saved = {}
+                # Patch py-clob-client's httpx singleton to use proxy
                 if proxy:
-                    for k in ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"):
-                        saved[k] = os.environ.get(k)
-                        os.environ[k] = proxy
+                    try:
+                        import py_clob_client.http_helpers.helpers as _h
+                        _h._http_client = httpx.Client(proxy=proxy, timeout=15)
+                    except Exception:
+                        pass
 
                 try:
                     client = _ClobClient(
@@ -324,13 +319,7 @@ class PolymarketClient:
                         return resp
                     return {"success": True, "data": str(resp)}
                 finally:
-                    # Restore env vars
-                    if proxy:
-                        for k, v in saved.items():
-                            if v is None:
-                                os.environ.pop(k, None)
-                            else:
-                                os.environ[k] = v
+                    pass  # httpx client remains patched (proxy stays active)
 
             loop = asyncio.get_running_loop()
             return await loop.run_in_executor(None, _sync_place)
