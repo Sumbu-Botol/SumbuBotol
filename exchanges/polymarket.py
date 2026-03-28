@@ -29,10 +29,11 @@ CLOB_URL  = "https://clob.polymarket.com"
 
 def _client(**kwargs) -> httpx.AsyncClient:
     """Buat httpx client, pakai proxy POLY_PROXY kalau diset."""
+    kwargs.setdefault("timeout", 15)
     proxy = getattr(config, "POLY_PROXY", "") or ""
     if proxy:
-        return httpx.AsyncClient(proxy=proxy, timeout=15, **kwargs)
-    return httpx.AsyncClient(timeout=15, **kwargs)
+        return httpx.AsyncClient(proxy=proxy, **kwargs)
+    return httpx.AsyncClient(**kwargs)
 
 
 class PolymarketClient:
