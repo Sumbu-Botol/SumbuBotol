@@ -252,8 +252,8 @@ class PolymarketClient:
                     host=CLOB_URL,
                     key=config.POLY_PRIVATE_KEY,
                     chain_id=_POLYGON_CHAIN_ID,
-                    signature_type=0,        # 0 = EOA direct
-                    funder=config.POLY_WALLET_ADDRESS,
+                    signature_type=1 if config.POLY_PROXY_ADDRESS else 0,
+                    funder=config.POLY_PROXY_ADDRESS or config.POLY_WALLET_ADDRESS,
                 )
                 # Try create_api_key explicitly to detect if it falls back to derive
                 try:

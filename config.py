@@ -28,9 +28,10 @@ HL_TESTNET        = os.getenv("HL_TESTNET", "true").lower() == "true"
 # ──────────────────────────────────────────
 # POLYMARKET
 # ──────────────────────────────────────────
-POLY_WALLET_ADDRESS  = os.getenv("POLY_WALLET_ADDRESS", "")
-POLY_PRIVATE_KEY     = os.getenv("POLY_PRIVATE_KEY", "")   # untuk trading (L1 auth)
-POLY_PROXY           = os.getenv("POLY_PROXY", "")          # proxy untuk bypass geoblock
+POLY_WALLET_ADDRESS  = os.getenv("POLY_WALLET_ADDRESS", "")   # EOA wallet (punya private key)
+POLY_PROXY_ADDRESS   = os.getenv("POLY_PROXY_ADDRESS", "")   # Proxy wallet yg muncul di Polymarket profile (opsional)
+POLY_PRIVATE_KEY     = os.getenv("POLY_PRIVATE_KEY", "")     # private key dari POLY_WALLET_ADDRESS
+POLY_PROXY           = os.getenv("POLY_PROXY", "")            # proxy HTTP untuk bypass geoblock
 POLY_BOT_SIZE        = float(os.getenv("POLY_BOT_SIZE", "5"))
 POLY_BOT_MAX_MARKETS   = int(os.getenv("POLY_BOT_MAX_MARKETS", "5"))
 POLY_BOT_SCAN_INTERVAL = int(os.getenv("POLY_BOT_SCAN_INTERVAL", "300"))  # detik, default 5 menit
