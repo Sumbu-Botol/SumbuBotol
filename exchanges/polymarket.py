@@ -237,8 +237,14 @@ class PolymarketClient:
                     except Exception:
                         creds = c.derive_api_key()
                     c.set_api_creds(creds)
-                    bal = c.get_balance_allowance({"asset_type": "USDC"})
-                    usdc = float(bal.get("balance", 0) or 0) / 1e6
+                    try:
+                        from py_clob_client.clob_types import BalanceAllowanceParams, AssetType
+                        bal = c.get_balance_allowance(BalanceAllowanceParams(asset_type=AssetType.USDC))
+                    except Exception:
+                        from py_clob_client.clob_types import BalanceAllowanceParams
+                        bal = c.get_balance_allowance(BalanceAllowanceParams(asset_type=0))
+                    raw = bal.get("balance", bal.get("allowance", 0)) if isinstance(bal, dict) else 0
+                    usdc = float(raw or 0) / 1e6
                     results[label] = {"address": funder[:10] + "...", "usdc": usdc}
                 except Exception as e:
                     results[label] = {"address": funder[:10] + "...", "usdc": 0.0, "error": str(e)[:80]}
