@@ -234,7 +234,17 @@ class BybitClient:
                 headers=_headers(ts, sig),
                 content=payload,
             )
+        raw = r.text
+        if not raw:
+            msg = f"Empty response from Bybit (HTTP {r.status_code}). CF Worker mungkin belum update."
+            print(f"[Bybit] place_order error: {msg}")
+            return {"retCode": -1, "retMsg": msg}
+        try:
             data = r.json()
+        except Exception:
+            msg = f"Invalid JSON: {raw[:200]}"
+            print(f"[Bybit] place_order error: {msg}")
+            return {"retCode": -1, "retMsg": msg}
         if data.get("retCode") != 0:
             print(f"[Bybit] place_order error: {data.get('retMsg')}")
         return data
