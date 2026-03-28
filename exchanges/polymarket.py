@@ -268,7 +268,7 @@ class PolymarketClient:
                     "api_key":     creds.api_key[:8] + "…" if hasattr(creds, "api_key") else str(creds)[:30],
                     "creds_source": creds_source,
                     "signer":      client.get_address(),
-                    "funder":      config.POLY_WALLET_ADDRESS,
+                    "funder":      config.POLY_PROXY_ADDRESS or config.POLY_WALLET_ADDRESS,
                     "proxy_used":  bool(proxy),
                 }
             except Exception as e:
