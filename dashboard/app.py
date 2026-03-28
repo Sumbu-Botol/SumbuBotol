@@ -436,11 +436,14 @@ async def bybit_force_trade(request: Request):
         symbol = config.BYBIT_BOT_PAIR  # BTCPERP by default
         lev    = config.BYBIT_BOT_LEVERAGE  # 125x by default
 
-        # Ambil harga mark terkini
-        tickers = await client.get_tickers([symbol])
-        mark_price = tickers.get(symbol, {}).get("mark_price", 0)
-        if not mark_price:
+        # Ambil harga dari candle terbaru (lebih reliable dari ticker)
+        from main import _TF_MAP
+        candles = await client.get_candles(symbol, "1", limit=1)
+        if not candles:
             return {"error": f"Gagal ambil harga {symbol}"}
+        mark_price = float(candles[0][4])  # close price candle terbaru
+        if not mark_price:
+            return {"error": f"Harga {symbol} = 0"}
 
         # Set leverage
         await client.set_leverage(symbol, lev)
