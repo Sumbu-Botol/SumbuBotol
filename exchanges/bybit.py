@@ -44,6 +44,22 @@ def _client(**kwargs) -> httpx.AsyncClient:
     return httpx.AsyncClient(timeout=15, **kwargs)
 
 
+def _parse_json(r: httpx.Response, context: str = "") -> dict:
+    """Parse JSON response; return error dict on empty/invalid body."""
+    import json as _json
+    raw = r.text
+    if not raw:
+        msg = f"Empty response (HTTP {r.status_code})"
+        print(f"[Bybit] {context} {msg}")
+        return {"retCode": -1, "retMsg": msg, "result": {}}
+    try:
+        return r.json()
+    except Exception:
+        msg = f"Invalid JSON: {raw[:200]}"
+        print(f"[Bybit] {context} {msg}")
+        return {"retCode": -1, "retMsg": msg, "result": {}}
+
+
 class BybitClient:
 
     # ── Balance ───────────────────────────────────────────────────────────────
@@ -81,7 +97,7 @@ class BybitClient:
                 continue
         else:
             raise last_err or RuntimeError("get_balance gagal setelah 3 percobaan")
-        data = r.json()
+        data = _parse_json(r, "get_balance")
         if data.get("retCode") != 0:
             raise RuntimeError(f"Bybit error {data.get('retCode')}: {data.get('retMsg')}")
         result = {"USDT": 0.0, "USDC": 0.0, "total_usd": 0.0}
@@ -108,7 +124,7 @@ class BybitClient:
             )
         if not r.is_success:
             raise RuntimeError(f"HTTP {r.status_code}")
-        data = r.json()
+        data = _parse_json(r, "_fetch_positions_by_settle")
         if data.get("retCode") != 0:
             raise RuntimeError(f"Bybit error {data.get('retCode')}: {data.get('retMsg')}")
         positions = []
@@ -163,7 +179,7 @@ class BybitClient:
                     f"{_base_url()}/v5/position/list?{qs}",
                     headers=_headers(ts, sig),
                 )
-            data  = r.json()
+            data  = _parse_json(r, "_get_position_mode")
             items = data.get("result", {}).get("list", [])
             if items:
                 return items[0].get("positionMode", "MergedSingle")
@@ -177,7 +193,7 @@ class BybitClient:
                     f"{_base_url()}/v5/position/list?{qs2}",
                     headers=_headers(ts2, sig2),
                 )
-            data2  = r2.json()
+            data2  = _parse_json(r2, "_get_position_mode2")
             items2 = data2.get("result", {}).get("list", [])
             if items2:
                 return items2[0].get("positionMode", "BothSide")
@@ -296,7 +312,7 @@ class BybitClient:
                 headers=_headers(ts, sig),
                 content=payload,
             )
-            return r.json()
+            return _parse_json(r, "set_tp_sl")
 
     # ── Leverage ──────────────────────────────────────────────────────────────
 
@@ -317,7 +333,7 @@ class BybitClient:
                 headers=_headers(ts, sig),
                 content=payload,
             )
-            return r.json()
+            return _parse_json(r, "set_leverage")
 
     # ── Candles ───────────────────────────────────────────────────────────────
 
@@ -334,7 +350,7 @@ class BybitClient:
                 f"{_base_url()}/v5/market/kline?{qs}",
                 headers=_headers(ts, sig),
             )
-            data = r.json()
+            data = _parse_json(r, "get_candles")
         if data.get("retCode") != 0:
             return []
         return data["result"].get("list", [])
@@ -353,7 +369,7 @@ class BybitClient:
                 f"{_base_url()}/v5/market/tickers?{qs}",
                 headers=_headers(ts, sig),
             )
-            data = r.json()
+            data = _parse_json(r, "get_tickers")
         result = {}
         for t in data.get("result", {}).get("list", []):
             result[t["symbol"]] = {
