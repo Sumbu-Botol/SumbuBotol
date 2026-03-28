@@ -255,12 +255,21 @@ class PolymarketClient:
                     signature_type=1,        # 1 = POLY_PROXY (funder=proxy wallet, signer=EOA)
                     funder=config.POLY_WALLET_ADDRESS,
                 )
-                creds = client.create_or_derive_api_creds()
+                # Try create_api_key explicitly to detect if it falls back to derive
+                try:
+                    creds = client.create_api_key()
+                    creds_source = "created"
+                except Exception as ce:
+                    creds = client.derive_api_key()
+                    creds_source = f"derived (create failed: {str(ce)[:80]})"
+                client.set_api_creds(creds)
                 return {
-                    "ok":         True,
-                    "api_key":    creds.api_key[:8] + "…" if hasattr(creds, "api_key") else str(creds)[:30],
-                    "wallet":     config.POLY_WALLET_ADDRESS,
-                    "proxy_used": bool(proxy),
+                    "ok":          True,
+                    "api_key":     creds.api_key[:8] + "…" if hasattr(creds, "api_key") else str(creds)[:30],
+                    "creds_source": creds_source,
+                    "signer":      client.get_address(),
+                    "funder":      config.POLY_WALLET_ADDRESS,
+                    "proxy_used":  bool(proxy),
                 }
             except Exception as e:
                 return {"ok": False, "error": str(e), "proxy_used": bool(proxy)}
