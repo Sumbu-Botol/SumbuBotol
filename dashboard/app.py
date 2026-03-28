@@ -739,6 +739,41 @@ async def poly_order(request: Request):
     except Exception as e:
         return {"error": str(e)}
 
+@app.get("/api/polymarket/bot/status")
+async def poly_bot_status(request: Request):
+    if not check_auth(request): raise HTTPException(status_code=401)
+    r = _polymarket_runner
+    if not r: return {"is_running": False, "configured": False}
+    return r.status()
+
+@app.post("/api/polymarket/bot/start")
+async def poly_bot_start(request: Request):
+    if not check_auth(request): raise HTTPException(status_code=401)
+    r = _polymarket_runner
+    if not r: return {"error": "Runner tidak tersedia"}
+    await r.start()
+    return {"ok": True, "is_running": r.is_running}
+
+@app.post("/api/polymarket/bot/stop")
+async def poly_bot_stop(request: Request):
+    if not check_auth(request): raise HTTPException(status_code=401)
+    r = _polymarket_runner
+    if not r: return {"error": "Runner tidak tersedia"}
+    await r.stop()
+    return {"ok": True, "is_running": r.is_running}
+
+@app.get("/api/polymarket/bot/opportunities")
+async def poly_bot_opportunities(request: Request):
+    """Scan sekarang dan tampilkan peluang tanpa eksekusi."""
+    if not check_auth(request): raise HTTPException(status_code=401)
+    try:
+        from strategy.polymarket_strategy import analyze_markets
+        markets = await _poly().get_popular_markets(limit=30)
+        opps    = analyze_markets(markets, min_bet=1.0, max_bet=float(config.POLY_BOT_SIZE))
+        return {"count": len(opps), "opportunities": opps[:10]}
+    except Exception as e:
+        return {"error": str(e), "opportunities": []}
+
 # ── News routes ──────────────────────────────────────────────────────────────
 
 @app.get("/news", response_class=HTMLResponse)

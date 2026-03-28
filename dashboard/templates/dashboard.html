@@ -122,7 +122,21 @@
     <h3 class="text-sm font-bold text-gray-400">Polymarket — Popular Markets</h3>
     <button onclick="loadPoly()" class="text-xs text-blue-400 hover:underline">↻ Refresh</button>
   </div>
-  <p class="text-xs text-gray-500 mb-3" id="polyBalanceLabel"></p>
+  <p class="text-xs text-gray-500 mb-2" id="polyBalanceLabel"></p>
+
+  <!-- Bot Controls -->
+  <div class="bg-gray-800/60 rounded-lg p-3 mb-4">
+    <div class="flex items-center justify-between mb-2">
+      <span class="text-xs text-gray-400 font-semibold uppercase tracking-wide">Auto-Bot</span>
+      <span id="polyBotStatus" class="text-xs text-gray-500">Loading...</span>
+    </div>
+    <div class="flex gap-2 mb-2">
+      <button onclick="polyBotAction('start')" class="flex-1 bg-green-700 hover:bg-green-600 text-white py-1.5 rounded text-xs font-bold">▶ Start</button>
+      <button onclick="polyBotAction('stop')"  class="flex-1 bg-red-800 hover:bg-red-700 text-white py-1.5 rounded text-xs font-bold">■ Stop</button>
+      <button onclick="scanOpportunities()"    class="flex-1 bg-blue-700 hover:bg-blue-600 text-white py-1.5 rounded text-xs font-bold">🔍 Scan</button>
+    </div>
+    <div id="polyOpportunities"></div>
+  </div>
 
   <!-- Positions -->
   <div id="polyPositions" class="mb-4"></div>
@@ -554,7 +568,48 @@ async function buyOutcome(tokenId, outcome, price) {
   else { alert('Order dikirim!'); loadPoly(); }
 }
 
+async function polyBotAction(action) {
+  const r = await fetch(`/api/polymarket/bot/${action}`, {method:'POST', credentials:'same-origin'});
+  const d = await r.json();
+  if (d.error) { alert(d.error); return; }
+  loadPolyBotStatus();
+}
+
+async function loadPolyBotStatus() {
+  const r = await fetch('/api/polymarket/bot/status', {credentials:'same-origin'});
+  const d = await r.json();
+  const el = document.getElementById('polyBotStatus');
+  if (d.is_running) {
+    el.innerHTML = `<span class="text-green-400 font-bold">● RUNNING</span> <span class="text-gray-500">scan tiap ${d.scan_interval}s</span>`;
+  } else {
+    el.innerHTML = `<span class="text-gray-500">● STOPPED</span>`;
+  }
+}
+
+async function scanOpportunities() {
+  document.getElementById('polyOpportunities').innerHTML = '<p class="text-xs text-gray-500">Scanning...</p>';
+  const r = await fetch('/api/polymarket/bot/opportunities', {credentials:'same-origin'});
+  const d = await r.json();
+  const el = document.getElementById('polyOpportunities');
+  if (!d.opportunities || !d.opportunities.length) {
+    el.innerHTML = '<p class="text-xs text-gray-500">Tidak ada peluang ditemukan saat ini.</p>';
+    return;
+  }
+  el.innerHTML = d.opportunities.slice(0,5).map(o => `
+    <div class="border border-gray-700 rounded p-2 mb-1 bg-gray-900/50">
+      <div class="flex justify-between items-center">
+        <span class="text-[10px] text-yellow-400 font-bold uppercase">${o.strategy}</span>
+        <span class="text-[10px] text-green-400 font-bold">+${o.expected_profit_pct}%</span>
+      </div>
+      <p class="text-[10px] text-white leading-tight mt-0.5">${o.market.substring(0,60)}</p>
+      <p class="text-[10px] text-gray-500 mt-0.5">${o.reason}</p>
+      <p class="text-[10px] text-blue-400">${o.action} — YES:${(o.yes_price*100).toFixed(1)}% NO:${(o.no_price*100).toFixed(1)}%</p>
+    </div>
+  `).join('');
+}
+
 // Load Polymarket data on page load (panel always present, data loads regardless of active exchange)
 loadPoly();
+loadPolyBotStatus();
 </script>
 {% endblock %}

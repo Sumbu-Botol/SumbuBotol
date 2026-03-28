@@ -30,8 +30,9 @@ HL_TESTNET        = os.getenv("HL_TESTNET", "true").lower() == "true"
 # ──────────────────────────────────────────
 POLY_WALLET_ADDRESS  = os.getenv("POLY_WALLET_ADDRESS", "")
 POLY_PRIVATE_KEY     = os.getenv("POLY_PRIVATE_KEY", "")   # untuk trading (L1 auth)
-POLY_BOT_SIZE        = float(os.getenv("POLY_BOT_SIZE", "10"))
-POLY_BOT_MAX_MARKETS = int(os.getenv("POLY_BOT_MAX_MARKETS", "5"))
+POLY_BOT_SIZE          = float(os.getenv("POLY_BOT_SIZE", "5"))
+POLY_BOT_MAX_MARKETS   = int(os.getenv("POLY_BOT_MAX_MARKETS", "5"))
+POLY_BOT_SCAN_INTERVAL = int(os.getenv("POLY_BOT_SCAN_INTERVAL", "300"))  # detik, default 5 menit
 
 # ──────────────────────────────────────────
 # TELEGRAM

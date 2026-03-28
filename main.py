@@ -15,11 +15,13 @@ from sqlalchemy import select
 import config
 from exchanges.hyperliquid import HyperliquidClient
 from exchanges.bybit import BybitClient
+from exchanges.polymarket import PolymarketClient
 from strategy.bollinger import BollingerStrategy
+from strategy.polymarket_strategy import analyze_markets
 from risk.manager import RiskManager
 from notifications.telegram import TelegramNotifier
 from database.models import Trade, init_db, AsyncSessionLocal
-from dashboard.app import app as dashboard_app, set_bot_runner, set_bybit_bot_runner, set_news_fetcher
+from dashboard.app import app as dashboard_app, set_bot_runner, set_bybit_bot_runner, set_news_fetcher, set_polymarket_runner
 from news.fetcher import NewsFetcher
 
 # Konversi timeframe dashboard (1m, 5m, 1h) → Bybit interval string
@@ -440,6 +442,109 @@ async def _calc_stats(db: AsyncSession) -> dict:
     }
 
 
+class PolymarketBotRunner:
+    """Bot otomatis Polymarket: scan market → deteksi mispricing → eksekusi bet."""
+
+    def __init__(self):
+        self.client     = PolymarketClient()
+        self.telegram   = TelegramNotifier()
+        self.is_running = False
+        self._task      = None
+        self.scan_interval = int(config.POLY_BOT_SCAN_INTERVAL)
+        self.max_bet    = float(config.POLY_BOT_SIZE)
+        self.min_bet    = 1.0
+        self.executed_markets: set = set()   # hindari bet market yang sama
+
+    def is_configured(self) -> bool:
+        return self.client.is_configured()
+
+    async def start(self):
+        if self.is_running:
+            return
+        self.is_running = True
+        self._task = asyncio.create_task(self._loop())
+        print(f"[PolyBot] Started — scan setiap {self.scan_interval}s, max bet ${self.max_bet}")
+
+    async def stop(self):
+        self.is_running = False
+        if self._task:
+            self._task.cancel()
+        print("[PolyBot] Stopped")
+
+    def status(self) -> dict:
+        return {
+            "is_running":    self.is_running,
+            "scan_interval": self.scan_interval,
+            "max_bet_usdc":  self.max_bet,
+            "configured":    self.is_configured(),
+        }
+
+    async def _loop(self):
+        while self.is_running:
+            try:
+                await self._scan_and_execute()
+            except Exception as e:
+                print(f"[PolyBot] Loop error: {e}")
+            await asyncio.sleep(self.scan_interval)
+
+    async def _scan_and_execute(self):
+        markets = await self.client.get_popular_markets(limit=30)
+        if not markets:
+            print("[PolyBot] Tidak ada market data")
+            return
+
+        opps = analyze_markets(markets, min_bet=self.min_bet, max_bet=self.max_bet)
+        if not opps:
+            print(f"[PolyBot] Tidak ada peluang ditemukan dari {len(markets)} market")
+            return
+
+        print(f"[PolyBot] {len(opps)} peluang ditemukan, eksekusi top 3")
+        for opp in opps[:3]:
+            cid = opp["condition_id"]
+            if cid in self.executed_markets:
+                continue
+
+            print(f"[PolyBot] {opp['strategy'].upper()} | {opp['market'][:50]} | "
+                  f"+{opp['expected_profit_pct']}% | {opp['action']}")
+
+            success = await self._execute(opp)
+            if success:
+                self.executed_markets.add(cid)
+                await self.telegram.notify_risk_alert(
+                    f"[Polymarket] {opp['strategy'].upper()} bet\n"
+                    f"Market: {opp['market'][:60]}\n"
+                    f"Action: {opp['action']}\n"
+                    f"Expected profit: +{opp['expected_profit_pct']}%\n"
+                    f"Reason: {opp['reason']}"
+                )
+
+    async def _execute(self, opp: dict) -> bool:
+        try:
+            action = opp["action"]
+            if action in ("BUY_YES", "BUY_BOTH"):
+                size  = opp["bet_yes_usdc"]
+                price = opp["yes_price"]
+                r = await self.client.place_order(opp["yes_token_id"], "buy", price, size)
+                if r.get("error"):
+                    print(f"[PolyBot] YES order error: {r['error']}")
+                    return False
+                print(f"[PolyBot] YES order OK: size=${size} @ {price*100:.1f}%")
+
+            if action in ("BUY_NO", "BUY_BOTH"):
+                size  = opp["bet_no_usdc"]
+                price = opp["no_price"]
+                r = await self.client.place_order(opp["no_token_id"], "buy", price, size)
+                if r.get("error"):
+                    print(f"[PolyBot] NO order error: {r['error']}")
+                    return False
+                print(f"[PolyBot] NO order OK: size=${size} @ {price*100:.1f}%")
+
+            return True
+        except Exception as e:
+            print(f"[PolyBot] Execute error: {e}")
+            return False
+
+
 async def daily_report_scheduler(runner: BotRunner):
     """Kirim laporan harian setiap jam 00:00 UTC."""
     while True:
@@ -472,6 +577,15 @@ async def main():
     else:
         if config.BOT_ENABLED:
             await bybit_runner.start()
+
+    # ── Polymarket bot ───────────────────────────────────────────────────────
+    poly_runner = PolymarketBotRunner()
+    set_polymarket_runner(poly_runner)
+    if poly_runner.is_configured():
+        if config.BOT_ENABLED:
+            await poly_runner.start()
+    else:
+        print("[PolyBot] POLY_WALLET_ADDRESS belum diset. Bot Polymarket tidak aktif.")
 
     # Jalankan news fetcher (poll RSS setiap 60 detik)
     news_fetcher = NewsFetcher()
