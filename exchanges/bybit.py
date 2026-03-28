@@ -343,13 +343,8 @@ class BybitClient:
         Return list of [time, open, high, low, close, volume]
         """
         qs  = f"category=linear&symbol={symbol}&interval={interval}&limit={limit}"
-        ts  = str(int(time.time() * 1000))
-        sig = _sign(config.BYBIT_API_SECRET, ts, qs)
         async with _client() as client:
-            r = await client.get(
-                f"{_base_url()}/v5/market/kline?{qs}",
-                headers=_headers(ts, sig),
-            )
+            r = await client.get(f"{_base_url()}/v5/market/kline?{qs}")
             data = _parse_json(r, "get_candles")
         if data.get("retCode") != 0:
             return []
@@ -358,17 +353,13 @@ class BybitClient:
     # ── Ticker ────────────────────────────────────────────────────────────────
 
     async def get_tickers(self, symbols: list[str] = None) -> dict:
-        """Return {symbol: {mark_price, index_price, funding_rate, ...}}"""
+        """Return {symbol: {mark_price, index_price, funding_rate, ...}}
+        Public endpoint — no auth required."""
         qs  = "category=linear"
         if symbols and len(symbols) == 1:
             qs += f"&symbol={symbols[0]}"
-        ts  = str(int(time.time() * 1000))
-        sig = _sign(config.BYBIT_API_SECRET, ts, qs)
         async with _client() as client:
-            r = await client.get(
-                f"{_base_url()}/v5/market/tickers?{qs}",
-                headers=_headers(ts, sig),
-            )
+            r = await client.get(f"{_base_url()}/v5/market/tickers?{qs}")
             data = _parse_json(r, "get_tickers")
         result = {}
         for t in data.get("result", {}).get("list", []):
