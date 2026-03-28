@@ -306,11 +306,14 @@ class PolymarketClient:
                         host=CLOB_URL,
                         key=config.POLY_PRIVATE_KEY,
                         chain_id=_POLYGON_CHAIN_ID,
-                        signature_type=0,        # 0 = EOA direct
-                        funder=config.POLY_WALLET_ADDRESS,
+                        signature_type=1 if config.POLY_PROXY_ADDRESS else 0,
+                        funder=config.POLY_PROXY_ADDRESS or config.POLY_WALLET_ADDRESS,
                     )
                     # Create/derive L2 API credentials
-                    creds = client.create_or_derive_api_creds()
+                    try:
+                        creds = client.create_api_key()
+                    except Exception:
+                        creds = client.derive_api_key()
                     client.set_api_creds(creds)
 
                     order_args = _OrderArgs(
