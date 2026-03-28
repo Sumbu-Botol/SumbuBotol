@@ -453,7 +453,9 @@ class PolymarketBotRunner:
         self.scan_interval = int(config.POLY_BOT_SCAN_INTERVAL)
         self.max_bet    = float(config.POLY_BOT_SIZE)
         self.min_bet    = 1.0
-        self.executed_markets: set = set()   # hindari bet market yang sama
+        self.executed_markets: set = set()
+        self.last_scan_result: dict = {}   # simpan hasil scan terakhir
+        self.logs: list = []               # simpan 50 log terakhir   # hindari bet market yang sama
 
     def is_configured(self) -> bool:
         return self.client.is_configured()
@@ -463,20 +465,30 @@ class PolymarketBotRunner:
             return
         self.is_running = True
         self._task = asyncio.create_task(self._loop())
-        print(f"[PolyBot] Started — scan setiap {self.scan_interval}s, max bet ${self.max_bet}")
+        self._log(f"Started — scan setiap {self.scan_interval}s, max bet ${self.max_bet}")
 
     async def stop(self):
         self.is_running = False
         if self._task:
             self._task.cancel()
-        print("[PolyBot] Stopped")
+        self._log("Stopped")
+
+    def _log(self, msg: str):
+        from datetime import datetime
+        entry = f"[{datetime.now().strftime('%H:%M:%S')}] {msg}"
+        print(f"[PolyBot] {msg}")
+        self.logs.append(entry)
+        if len(self.logs) > 50:
+            self.logs.pop(0)
 
     def status(self) -> dict:
         return {
-            "is_running":    self.is_running,
-            "scan_interval": self.scan_interval,
-            "max_bet_usdc":  self.max_bet,
-            "configured":    self.is_configured(),
+            "is_running":       self.is_running,
+            "scan_interval":    self.scan_interval,
+            "max_bet_usdc":     self.max_bet,
+            "configured":       self.is_configured(),
+            "last_scan":        self.last_scan_result,
+            "logs":             self.logs[-20:],
         }
 
     async def _loop(self):
@@ -484,28 +496,33 @@ class PolymarketBotRunner:
             try:
                 await self._scan_and_execute()
             except Exception as e:
-                print(f"[PolyBot] Loop error: {e}")
+                self._log(f"Loop error: {e}")
             await asyncio.sleep(self.scan_interval)
 
     async def _scan_and_execute(self):
         markets = await self.client.get_popular_markets(limit=30)
         if not markets:
-            print("[PolyBot] Tidak ada market data")
+            self._log("Tidak ada market data")
             return
 
         opps = analyze_markets(markets, min_bet=self.min_bet, max_bet=self.max_bet)
+        self.last_scan_result = {
+            "markets_scanned": len(markets),
+            "opportunities":   len(opps),
+            "top":             opps[0]["market"][:60] if opps else "-",
+        }
         if not opps:
-            print(f"[PolyBot] Tidak ada peluang ditemukan dari {len(markets)} market")
+            self._log(f"Tidak ada peluang dari {len(markets)} market")
             return
 
-        print(f"[PolyBot] {len(opps)} peluang ditemukan, eksekusi top 3")
+        self._log(f"{len(opps)} peluang ditemukan, eksekusi top 3")
         for opp in opps[:3]:
             cid = opp["condition_id"]
             if cid in self.executed_markets:
                 continue
 
-            print(f"[PolyBot] {opp['strategy'].upper()} | {opp['market'][:50]} | "
-                  f"+{opp['expected_profit_pct']}% | {opp['action']}")
+            self._log(f"{opp['strategy'].upper()} | {opp['market'][:50]} | "
+                      f"+{opp['expected_profit_pct']}% | {opp['action']}")
 
             success = await self._execute(opp)
             if success:
@@ -526,22 +543,22 @@ class PolymarketBotRunner:
                 price = opp["yes_price"]
                 r = await self.client.place_order(opp["yes_token_id"], "buy", price, size)
                 if r.get("error"):
-                    print(f"[PolyBot] YES order error: {r['error']}")
+                    self._log(f"YES order error: {r['error']}")
                     return False
-                print(f"[PolyBot] YES order OK: size=${size} @ {price*100:.1f}%")
+                self._log(f"YES order OK: size=${size} @ {price*100:.1f}%")
 
             if action in ("BUY_NO", "BUY_BOTH"):
                 size  = opp["bet_no_usdc"]
                 price = opp["no_price"]
                 r = await self.client.place_order(opp["no_token_id"], "buy", price, size)
                 if r.get("error"):
-                    print(f"[PolyBot] NO order error: {r['error']}")
+                    self._log(f"NO order error: {r['error']}")
                     return False
-                print(f"[PolyBot] NO order OK: size=${size} @ {price*100:.1f}%")
+                self._log(f"NO order OK: size=${size} @ {price*100:.1f}%")
 
             return True
         except Exception as e:
-            print(f"[PolyBot] Execute error: {e}")
+            self._log(f"Execute error: {e}")
             return False
 
 
