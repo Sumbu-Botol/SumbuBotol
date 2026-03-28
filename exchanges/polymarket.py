@@ -205,27 +205,28 @@ class PolymarketClient:
     # ── Balance ───────────────────────────────────────────────────────────────
 
     async def get_balance(self) -> dict:
-        """Ambil USDC balance dari CLOB API."""
-        if not self.is_trading_configured():
-            return {"usdc": 0.0, "error": "Private key belum dikonfigurasi (set POLY_PRIVATE_KEY)"}
+        """Ambil USDC balance dari data API untuk kedua wallet."""
+        addresses = {"eoa": config.POLY_WALLET_ADDRESS}
+        if config.POLY_PROXY_ADDRESS:
+            addresses["proxy"] = config.POLY_PROXY_ADDRESS
+        result = {}
         try:
-            # CLOB API balance — try multiple known endpoints
             async with _client() as client:
-                # Try authenticated endpoint first
-                path = "/balance"
-                headers = self._auth_headers("GET", path)
-                r = await client.get(f"{CLOB_URL}{path}", headers=headers)
-                if r.status_code == 404:
-                    # Fallback: get from data API (public)
+                for label, addr in addresses.items():
+                    if not addr:
+                        continue
                     r = await client.get(
-                        f"https://data-api.polymarket.com/balance",
-                        params={"address": config.POLY_WALLET_ADDRESS}
+                        "https://data-api.polymarket.com/balance",
+                        params={"address": addr}
                     )
-            if not r.is_success:
-                return {"usdc": 0.0, "error": f"HTTP {r.status_code}: {r.text[:100]}"}
-            data = r.json()
-            bal = data.get("balance", data.get("usdc", data if isinstance(data, (int, float)) else 0))
-            return {"usdc": float(bal)}
+                    if r.is_success:
+                        data = r.json()
+                        bal = data.get("balance", data.get("usdc", data if isinstance(data, (int, float)) else 0))
+                        result[label] = {"address": addr[:10] + "...", "usdc": float(bal or 0)}
+                    else:
+                        result[label] = {"address": addr[:10] + "...", "usdc": 0.0, "error": f"HTTP {r.status_code}"}
+            usdc = max(v.get("usdc", 0) for v in result.values()) if result else 0.0
+            return {"usdc": usdc, "detail": result}
         except Exception as e:
             return {"usdc": 0.0, "error": str(e)}
 
