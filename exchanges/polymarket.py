@@ -71,13 +71,35 @@ class PolymarketClient:
             no_price  = 0.0
             yes_token_id = ""
             no_token_id  = ""
+
+            # Token IDs from tokens array
             for t in tokens:
-                if t.get("outcome", "").lower() == "yes":
-                    yes_price    = float(t.get("price", 0) or 0)
+                outcome_name = t.get("outcome", "").lower()
+                if outcome_name == "yes":
                     yes_token_id = t.get("token_id", "")
-                elif t.get("outcome", "").lower() == "no":
-                    no_price    = float(t.get("price", 0) or 0)
-                    no_token_id = t.get("token_id", "")
+                    yes_price    = float(t.get("price", 0) or 0)
+                elif outcome_name == "no":
+                    no_token_id  = t.get("token_id", "")
+                    no_price     = float(t.get("price", 0) or 0)
+
+            # Fallback: Gamma API stores prices in outcomePrices as JSON string
+            # e.g. outcomePrices='["0.95","0.05"]', outcomes='["Yes","No"]'
+            if yes_price == 0 and no_price == 0:
+                try:
+                    raw_prices   = m.get("outcomePrices", "[]")
+                    raw_outcomes = m.get("outcomes", "[]")
+                    prices_list   = json.loads(raw_prices)   if isinstance(raw_prices, str)   else raw_prices
+                    outcomes_list = json.loads(raw_outcomes) if isinstance(raw_outcomes, str) else raw_outcomes
+                    for idx, oc in enumerate(outcomes_list):
+                        if idx < len(prices_list):
+                            p = float(prices_list[idx] or 0)
+                            if oc.lower() == "yes":
+                                yes_price = p
+                            elif oc.lower() == "no":
+                                no_price = p
+                except Exception:
+                    pass
+
             result.append({
                 "id":           m.get("id", ""),
                 "condition_id": m.get("conditionId", ""),
