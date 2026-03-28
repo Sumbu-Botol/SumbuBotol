@@ -10,6 +10,8 @@ Tidak perlu API key/secret/passphrase terpisah.
 Cukup set: POLY_WALLET_ADDRESS + POLY_PRIVATE_KEY
 """
 import httpx
+import hmac
+import hashlib
 import time
 import json
 import sys, os
@@ -38,6 +40,9 @@ def _client(**kwargs) -> httpx.AsyncClient:
 
 class PolymarketClient:
 
+    def __init__(self):
+        self._api_key_cache: dict = {}   # {"apiKey", "secret", "passphrase"}
+
     def is_configured(self) -> bool:
         return bool(config.POLY_WALLET_ADDRESS)
 
@@ -58,6 +63,36 @@ class PolymarketClient:
             "POLY-TIMESTAMP": ts,
             "POLY-SIGNATURE": sig,
             "Content-Type":   "application/json",
+        }
+
+    # ── L2 Auth (API key via HMAC) ────────────────────────────────────────────
+
+    async def _ensure_api_key(self) -> dict:
+        """Create L2 API key using L1 auth. Cached per instance."""
+        if self._api_key_cache:
+            return self._api_key_cache
+        path = "/auth/api-key"
+        headers = self._auth_headers("POST", path)
+        headers["Content-Type"] = "application/json"
+        async with _client() as client:
+            r = await client.post(f"{CLOB_URL}{path}", headers=headers, content="{}")
+        if not r.is_success:
+            raise Exception(f"Gagal buat API key: {r.status_code} {r.text[:200]}")
+        self._api_key_cache = r.json()
+        return self._api_key_cache
+
+    def _l2_auth_headers(self, method: str, path: str, body: str = "",
+                         api_key: str = "", secret: str = "", passphrase: str = "") -> dict:
+        """Generate L2 auth headers using HMAC-SHA256."""
+        ts  = str(int(time.time()))
+        msg = ts + method.upper() + path + body
+        sig = hmac.new(secret.encode(), msg.encode(), hashlib.sha256).hexdigest()
+        return {
+            "POLY-API-KEY":    api_key,
+            "POLY-TIMESTAMP":  ts,
+            "POLY-SIGNATURE":  sig,
+            "POLY-PASSPHRASE": passphrase,
+            "Content-Type":    "application/json",
         }
 
     # ── Public market data ────────────────────────────────────────────────────
@@ -227,7 +262,9 @@ class PolymarketClient:
         if not self.is_trading_configured():
             return {"error": "Private key belum dikonfigurasi (set POLY_PRIVATE_KEY)"}
         try:
-            path   = "/order"
+            # Get L2 API key (create if not cached)
+            creds = await self._ensure_api_key()
+            path  = "/order"
             body_d = {
                 "tokenID":    token_id,
                 "side":       side.upper(),
@@ -236,10 +273,20 @@ class PolymarketClient:
                 "orderType":  "GTC",
                 "feeRateBps": "0",
             }
-            body    = json.dumps(body_d)
-            headers = self._auth_headers("POST", path, body)
+            body    = json.dumps(body_d, separators=(",", ":"))
+            headers = self._l2_auth_headers(
+                "POST", path, body,
+                api_key    = creds.get("apiKey", ""),
+                secret     = creds.get("secret", ""),
+                passphrase = creds.get("passphrase", ""),
+            )
             async with _client() as client:
                 r = await client.post(f"{CLOB_URL}{path}", headers=headers, content=body)
+            if not r.is_success:
+                # If unauthorized, clear cache and return error
+                if r.status_code in (401, 403):
+                    self._api_key_cache = {}
+                return {"error": f"HTTP {r.status_code}: {r.text[:200]}"}
             return r.json()
         except Exception as e:
             return {"error": str(e)}
