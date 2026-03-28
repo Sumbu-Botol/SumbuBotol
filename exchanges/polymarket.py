@@ -53,9 +53,19 @@ class PolymarketClient:
 
     # ── Public market data ────────────────────────────────────────────────────
 
+    async def _fetch_clob_tokens(self, client: httpx.AsyncClient, condition_id: str) -> list:
+        """Fetch token IDs from CLOB API for a given conditionId."""
+        try:
+            r = await client.get(f"{CLOB_URL}/markets/{condition_id}", timeout=10)
+            if r.is_success:
+                return r.json().get("tokens", [])
+        except Exception:
+            pass
+        return []
+
     async def get_popular_markets(self, limit: int = 20) -> list:
         """Ambil market populer berdasarkan volume 24h."""
-        async with httpx.AsyncClient(timeout=15) as client:
+        async with httpx.AsyncClient(timeout=20) as client:
             r = await client.get(f"{GAMMA_URL}/markets", params={
                 "active":    "true",
                 "closed":    "false",
@@ -63,64 +73,66 @@ class PolymarketClient:
                 "ascending": "false",
                 "limit":     limit,
             })
-        markets = r.json() if r.is_success else []
+            markets = r.json() if r.is_success else []
+
+            # Fetch token IDs from CLOB API concurrently for all markets
+            import asyncio as _aio
+            clob_tokens_list = await _aio.gather(*[
+                self._fetch_clob_tokens(client, m.get("conditionId", ""))
+                for m in markets
+            ])
+
         result = []
-        for m in markets:
-            tokens    = m.get("tokens", [])
-            yes_price = 0.0
-            no_price  = 0.0
+        for m, clob_tokens in zip(markets, clob_tokens_list):
+            yes_price    = 0.0
+            no_price     = 0.0
             yes_token_id = ""
             no_token_id  = ""
+            yes_label    = "YES"
+            no_label     = "NO"
 
-            # Token IDs from tokens array (by name first, then by index)
-            for t in tokens:
-                outcome_name = t.get("outcome", "").lower()
-                if outcome_name == "yes":
-                    yes_token_id = t.get("token_id", "")
-                    yes_price    = float(t.get("price", 0) or 0)
-                elif outcome_name == "no":
-                    no_token_id  = t.get("token_id", "")
-                    no_price     = float(t.get("price", 0) or 0)
-            # Fallback by index for sports/non-binary markets
-            if not yes_token_id and len(tokens) > 0:
-                yes_token_id = tokens[0].get("token_id", "")
-            if not no_token_id and len(tokens) > 1:
-                no_token_id = tokens[1].get("token_id", "")
-
-            # Gamma API stores prices in outcomePrices as JSON string
-            # e.g. outcomePrices='["0.95","0.05"]', outcomes='["Yes","No"]'
-            # For sports markets outcomes can be team names, not yes/no
-            yes_label = "YES"
-            no_label  = "NO"
+            # Parse prices and labels from Gamma API outcomePrices/outcomes
             try:
                 raw_prices   = m.get("outcomePrices", "[]")
                 raw_outcomes = m.get("outcomes", "[]")
                 prices_list   = json.loads(raw_prices)   if isinstance(raw_prices, str)   else (raw_prices or [])
                 outcomes_list = json.loads(raw_outcomes) if isinstance(raw_outcomes, str) else (raw_outcomes or [])
 
-                for idx, oc in enumerate(outcomes_list):
-                    if idx < len(prices_list):
-                        p = float(prices_list[idx] or 0)
-                        if oc.lower() == "yes":
-                            yes_price = p
-                        elif oc.lower() == "no":
-                            no_price = p
-
-                # If still 0 (sports/non-binary), use first two outcomes
-                if yes_price == 0 and no_price == 0 and len(outcomes_list) >= 2:
+                if len(outcomes_list) >= 2:
                     yes_price = float(prices_list[0] or 0) if len(prices_list) > 0 else 0
                     no_price  = float(prices_list[1] or 0) if len(prices_list) > 1 else 0
-                    yes_label = outcomes_list[0][:12]  # potong bila terlalu panjang
-                    no_label  = outcomes_list[1][:12]
+                    lbl0 = outcomes_list[0]
+                    lbl1 = outcomes_list[1]
+                    yes_label = lbl0 if lbl0.lower() != "yes" else "YES"
+                    no_label  = lbl1 if lbl1.lower() != "no"  else "NO"
+                    # Truncate long team names
+                    if len(yes_label) > 14:
+                        yes_label = yes_label[:13] + "…"
+                    if len(no_label) > 14:
+                        no_label = no_label[:13] + "…"
             except Exception:
                 pass
+
+            # Get token IDs from CLOB API response
+            for t in clob_tokens:
+                outcome_name = t.get("outcome", "").lower()
+                tid          = t.get("token_id", "")
+                if outcome_name == outcomes_list[0].lower() if 'outcomes_list' in dir() and outcomes_list else outcome_name == "yes":
+                    yes_token_id = tid
+                elif outcome_name == outcomes_list[1].lower() if 'outcomes_list' in dir() and outcomes_list else outcome_name == "no":
+                    no_token_id = tid
+            # Fallback by index
+            if not yes_token_id and len(clob_tokens) > 0:
+                yes_token_id = clob_tokens[0].get("token_id", "")
+            if not no_token_id and len(clob_tokens) > 1:
+                no_token_id = clob_tokens[1].get("token_id", "")
 
             result.append({
                 "id":           m.get("id", ""),
                 "condition_id": m.get("conditionId", ""),
                 "question":     m.get("question", ""),
                 "category":     m.get("groupItemTitle") or m.get("category", ""),
-                "yes_price":    round(yes_price * 100, 1),   # dalam %
+                "yes_price":    round(yes_price * 100, 1),
                 "no_price":     round(no_price * 100, 1),
                 "yes_label":    yes_label,
                 "no_label":     no_label,
