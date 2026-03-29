@@ -697,23 +697,23 @@ async def poly_history(request: Request, limit: int = 20):
     """Riwayat trade Polymarket berdasarkan wallet address."""
     if not check_auth(request):
         raise HTTPException(status_code=401)
-    if not config.POLY_WALLET_ADDRESS:
+    wallet = config.POLY_PROXY_ADDRESS or config.POLY_WALLET_ADDRESS
+    if not wallet:
         return {"error": "POLY_WALLET_ADDRESS belum diset", "trades": []}
     try:
         import httpx
         async with httpx.AsyncClient(timeout=15) as client:
-            # Coba beberapa endpoint Gamma API untuk trade history
             r = await client.get("https://gamma-api.polymarket.com/trades", params={
-                "taker": config.POLY_WALLET_ADDRESS,
+                "taker": wallet,
                 "limit": limit,
             })
             if r.status_code == 404:
                 r = await client.get("https://data-api.polymarket.com/activity", params={
-                    "user":  config.POLY_WALLET_ADDRESS,
+                    "user":  wallet,
                     "limit": limit,
                 })
         if not r.is_success:
-            return {"error": f"HTTP {r.status_code}", "wallet": config.POLY_WALLET_ADDRESS, "trades": []}
+            return {"error": f"HTTP {r.status_code}", "wallet": wallet, "trades": []}
         data = r.json()
         trades = data if isinstance(data, list) else data.get("data", [])
         result = []

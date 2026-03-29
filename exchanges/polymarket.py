@@ -172,12 +172,13 @@ class PolymarketClient:
 
     async def get_positions(self) -> list:
         """Ambil posisi aktif berdasarkan wallet address."""
-        if not config.POLY_WALLET_ADDRESS:
+        wallet = config.POLY_PROXY_ADDRESS or config.POLY_WALLET_ADDRESS
+        if not wallet:
             return []
         try:
             async with _client() as client:
                 r = await client.get(f"{GAMMA_URL}/positions", params={
-                    "user":          config.POLY_WALLET_ADDRESS,
+                    "user":          wallet,
                     "sizeThreshold": "0.01",
                 })
             if not r.is_success:
