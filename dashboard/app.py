@@ -726,7 +726,7 @@ async def poly_history(request: Request, limit: int = 20):
                 "size":      float(t.get("size", 0) or 0),
                 "timestamp": t.get("timestamp", ""),
             })
-        return {"wallet": config.POLY_WALLET_ADDRESS[:10] + "...", "trade_count": len(result), "trades": result}
+        return {"wallet": wallet[:10] + "...", "trade_count": len(result), "trades": result}
     except Exception as e:
         return {"error": str(e), "trades": []}
 

@@ -171,33 +171,34 @@ class PolymarketClient:
     # ── Positions ─────────────────────────────────────────────────────────────
 
     async def get_positions(self) -> list:
-        """Ambil posisi aktif berdasarkan wallet address."""
-        wallet = config.POLY_PROXY_ADDRESS or config.POLY_WALLET_ADDRESS
-        if not wallet:
+        """Ambil posisi aktif — cek kedua wallet (EOA dan proxy)."""
+        wallets = list({config.POLY_PROXY_ADDRESS, config.POLY_WALLET_ADDRESS} - {""})
+        if not wallets:
             return []
+        result = []
         try:
             async with _client() as client:
-                r = await client.get(f"{GAMMA_URL}/positions", params={
-                    "user":          wallet,
-                    "sizeThreshold": "0.01",
-                })
-            if not r.is_success:
-                return []
-            positions = r.json()
-            if not isinstance(positions, list):
-                positions = positions.get("data", []) if isinstance(positions, dict) else []
-            result = []
-            for p in positions:
-                market = p.get("market") or {}
-                result.append({
-                    "market":        market.get("question", p.get("title", "")),
-                    "outcome":       p.get("outcome", ""),
-                    "size":          float(p.get("size", 0) or 0),
-                    "avg_price":     round(float(p.get("avgPrice", 0) or 0) * 100, 1),
-                    "current_price": round(float(p.get("currentPrice", 0) or 0) * 100, 1),
-                    "value":         float(p.get("value", 0) or 0),
-                    "pnl":           float(p.get("cashBalance", 0) or 0),
-                })
+                for wallet in wallets:
+                    r = await client.get(f"{GAMMA_URL}/positions", params={
+                        "user":          wallet,
+                        "sizeThreshold": "0.01",
+                    })
+                    if not r.is_success:
+                        continue
+                    positions = r.json()
+                    if not isinstance(positions, list):
+                        positions = positions.get("data", []) if isinstance(positions, dict) else []
+                    for p in positions:
+                        market = p.get("market") or {}
+                        result.append({
+                            "market":        market.get("question", p.get("title", "")),
+                            "outcome":       p.get("outcome", ""),
+                            "size":          float(p.get("size", 0) or 0),
+                            "avg_price":     round(float(p.get("avgPrice", 0) or 0) * 100, 1),
+                            "current_price": round(float(p.get("currentPrice", 0) or 0) * 100, 1),
+                            "value":         float(p.get("value", 0) or 0),
+                            "pnl":           float(p.get("cashBalance", 0) or 0),
+                        })
             return result
         except Exception as e:
             print(f"[Polymarket] positions error: {e}")
