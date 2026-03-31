@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sack Counter — Hitung Karung Otomatis</title>
+  <link rel="stylesheet" href="/static/css/style.css" />
+</head>
+<body>
+
+  <header class="header">
+    <div class="header-inner">
+      <span class="logo-icon">&#x1F4E6;</span>
+      <div>
+        <h1 class="header-title">Sack Counter</h1>
+        <p class="header-sub">Hitung karung otomatis dari foto atau video menggunakan AI</p>
+      </div>
+    </div>
+  </header>
+
+  <main class="main">
+
+    <!-- Tab selector -->
+    <div class="tab-bar">
+      <button class="tab-btn active" data-tab="image">
+        &#x1F5BC; Foto
+      </button>
+      <button class="tab-btn" data-tab="video">
+        &#x1F3AC; Video
+      </button>
+    </div>
+
+    <!-- IMAGE TAB -->
+    <section class="tab-content active" id="tab-image">
+      <div class="upload-card" id="image-drop-zone">
+        <div class="upload-icon">&#x1F4F7;</div>
+        <p class="upload-title">Drag & Drop foto di sini</p>
+        <p class="upload-sub">atau klik untuk memilih file</p>
+        <p class="upload-hint">Format: JPG, PNG, BMP, WEBP &nbsp;|&nbsp; Maks. 200 MB</p>
+        <input type="file" id="image-input" accept=".jpg,.jpeg,.png,.bmp,.webp" hidden />
+      </div>
+
+      <div id="image-preview-box" class="preview-box hidden">
+        <img id="image-preview" src="" alt="Preview" />
+        <button class="btn btn-secondary btn-sm" id="image-clear-btn">&#x2715; Ganti Foto</button>
+      </div>
+
+      <button class="btn btn-primary" id="image-detect-btn" disabled>
+        &#x1F50D; Deteksi Karung
+      </button>
+
+      <div id="image-result" class="result-card hidden">
+        <div class="result-count-row">
+          <span class="result-label">Total Karung Terdeteksi</span>
+          <span class="result-count" id="image-count">0</span>
+        </div>
+        <div id="image-boxes-info" class="boxes-info"></div>
+        <div class="result-image-wrap">
+          <img id="image-annotated" src="" alt="Hasil Deteksi" />
+        </div>
+        <a class="btn btn-outline" id="image-download-btn" download>&#x2B07; Unduh Hasil</a>
+      </div>
+    </section>
+
+    <!-- VIDEO TAB -->
+    <section class="tab-content" id="tab-video">
+      <div class="upload-card" id="video-drop-zone">
+        <div class="upload-icon">&#x1F4F9;</div>
+        <p class="upload-title">Drag & Drop video di sini</p>
+        <p class="upload-sub">atau klik untuk memilih file</p>
+        <p class="upload-hint">Format: MP4, AVI, MOV, MKV &nbsp;|&nbsp; Maks. 200 MB</p>
+        <input type="file" id="video-input" accept=".mp4,.avi,.mov,.mkv,.webm" hidden />
+      </div>
+
+      <div id="video-preview-box" class="preview-box hidden">
+        <video id="video-preview" controls></video>
+        <button class="btn btn-secondary btn-sm" id="video-clear-btn">&#x2715; Ganti Video</button>
+      </div>
+
+      <button class="btn btn-primary" id="video-detect-btn" disabled>
+        &#x1F50D; Proses Video
+      </button>
+
+      <div id="video-result" class="result-card hidden">
+        <div class="stats-grid">
+          <div class="stat-item">
+            <span class="stat-value" id="video-avg">-</span>
+            <span class="stat-label">Rata-rata</span>
+          </div>
+          <div class="stat-item highlight">
+            <span class="stat-value" id="video-max">-</span>
+            <span class="stat-label">Maksimum</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-value" id="video-min">-</span>
+            <span class="stat-label">Minimum</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-value" id="video-frames">-</span>
+            <span class="stat-label">Total Frame</span>
+          </div>
+        </div>
+        <div class="result-video-wrap">
+          <video id="video-annotated" controls></video>
+        </div>
+        <a class="btn btn-outline" id="video-download-btn" download>&#x2B07; Unduh Video Hasil</a>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Loading overlay -->
+  <div id="loading-overlay" class="loading-overlay hidden">
+    <div class="loading-box">
+      <div class="spinner"></div>
+      <p id="loading-text">Memproses...</p>
+      <p class="loading-sub" id="loading-sub">Mohon tunggu sebentar</p>
+    </div>
+  </div>
+
+  <!-- Toast notification -->
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="/static/js/main.js"></script>
+</body>
+</html>
