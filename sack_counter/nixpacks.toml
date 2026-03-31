@@ -1,0 +1,19 @@
+# Nixpacks build config untuk Railway
+# OpenCV headless membutuhkan beberapa library sistem
+
+[phases.setup]
+nixPkgs = [
+  "python312",
+  "libGL",        # OpenCV dependency
+  "libglib2",     # OpenCV dependency
+  "ffmpeg",       # Video processing
+]
+
+[phases.install]
+cmds = [
+  "pip install --upgrade pip",
+  "pip install -r requirements.txt",
+]
+
+[start]
+cmd = "uvicorn app:app --host 0.0.0.0 --port $PORT"

@@ -36,8 +36,23 @@ app = FastAPI(
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
-# Lazy-load detector (agar startup tetap cepat)
+# Lazy-load detector
 _detector = None
+
+
+@app.on_event("startup")
+async def startup_event():
+    """
+    Pre-warm model saat startup agar request pertama tidak timeout.
+    yolov8n.pt (~6 MB) akan di-download otomatis jika belum ada.
+    """
+    import threading
+    def _load():
+        try:
+            get_detector()
+        except Exception as e:
+            print(f"[startup] Gagal load model: {e}")
+    threading.Thread(target=_load, daemon=True).start()
 
 ALLOWED_IMAGE_EXT = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 ALLOWED_VIDEO_EXT = {".mp4", ".avi", ".mov", ".mkv", ".webm"}
