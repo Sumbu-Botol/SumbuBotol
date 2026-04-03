@@ -1,276 +1,165 @@
 """
-Sack Counting Detector
-======================
-Menggunakan YOLOv8 untuk mendeteksi dan menghitung karung dari gambar atau video.
-Model dapat di-fine-tune menggunakan dataset karung, atau menggunakan kelas 'backpack'/'suitcase'
-dari COCO sebagai baseline sampai dataset custom tersedia.
+Karung Detector — ONNX Runtime (tanpa PyTorch)
+Menggunakan YOLOv8n.onnx (~6MB) + onnxruntime-cpu (~50MB).
 """
 
 import cv2
 import numpy as np
 import os
-import time
-from pathlib import Path
-from typing import Optional
+import urllib.request
 from dataclasses import dataclass
 
-try:
-    from ultralytics import YOLO
-    YOLO_AVAILABLE = True
-except ImportError:
-    YOLO_AVAILABLE = False
+ONNX_MODEL_URL = "https://github.com/ultralytics/assets/releases/download/v0.0.0/yolov8n.onnx"
+DEFAULT_MODEL_PATH = "yolov8n.onnx"
+
+# Kelas COCO yang mirip karung (proxy sampai model custom tersedia)
+TARGET_CLASSES = {24, 26, 28}  # backpack, handbag, suitcase
+INPUT_SIZE = 640
 
 
 @dataclass
 class DetectionResult:
     count: int
     annotated_frame: np.ndarray
-    confidence_scores: list[float]
-    bounding_boxes: list[tuple]
+    confidence_scores: list
+    bounding_boxes: list
 
 
 class SackDetector:
-    """
-    Detektor karung menggunakan YOLOv8.
+    def __init__(self, model_path=DEFAULT_MODEL_PATH, confidence_threshold=0.40):
+        import onnxruntime as ort
 
-    Modes:
-      - 'pretrained'  : Pakai model COCO pretrained, deteksi kelas yg mirip karung
-      - 'custom'      : Pakai model custom yang sudah di-train dengan data karung
-    """
+        if not os.path.exists(model_path):
+            print(f"[detector] Download model dari {ONNX_MODEL_URL} ...")
+            urllib.request.urlretrieve(ONNX_MODEL_URL, model_path)
+            print("[detector] Download selesai.")
 
-    # Kelas dari COCO yang bisa dipakai sebagai proxy karung sebelum model custom tersedia
-    COCO_SACK_PROXY_CLASSES = {
-        24: "backpack",
-        26: "handbag",
-        28: "suitcase",
-        # Tambahkan kelas lain jika relevan
-    }
-
-    def __init__(
-        self,
-        model_path: str = "yolov8n.pt",
-        confidence_threshold: float = 0.40,
-        custom_class_ids: Optional[list[int]] = None,
-    ):
-        """
-        Args:
-            model_path: Path ke file model YOLO (.pt).
-                        'yolov8n.pt' akan auto-download jika belum ada.
-                        Gunakan path custom model jika sudah punya data karung.
-            confidence_threshold: Minimum confidence score (0.0 - 1.0)
-            custom_class_ids: List ID kelas untuk dideteksi.
-                              None = gunakan proxy COCO untuk karung.
-        """
-        if not YOLO_AVAILABLE:
-            raise RuntimeError(
-                "Ultralytics tidak terinstall. Jalankan: pip install ultralytics"
-            )
-
+        self.session = ort.InferenceSession(
+            model_path, providers=["CPUExecutionProvider"]
+        )
+        self.input_name = self.session.get_inputs()[0].name
         self.confidence_threshold = confidence_threshold
-        self.model = YOLO(model_path)
-
-        # Tentukan kelas yang akan dideteksi
-        if custom_class_ids is not None:
-            self.target_class_ids = custom_class_ids
-        else:
-            self.target_class_ids = list(self.COCO_SACK_PROXY_CLASSES.keys())
-
-        # Cek apakah model custom (class 0 = sack)
-        self.is_custom_model = self._check_custom_model()
-
-    def _check_custom_model(self) -> bool:
-        """Cek apakah model memiliki kelas 'sack' atau 'karung'."""
-        names = self.model.names
-        for name in names.values():
-            if name.lower() in ("sack", "karung", "bag", "rice_bag", "rice_sack"):
-                return True
-        return False
 
     def detect_image(self, image: np.ndarray) -> DetectionResult:
-        """
-        Deteksi karung pada satu frame gambar.
+        orig_h, orig_w = image.shape[:2]
+        blob, scale, pad_x, pad_y = self._preprocess(image)
 
-        Args:
-            image: Gambar dalam format BGR (OpenCV)
+        output = self.session.run(None, {self.input_name: blob})
+        boxes, confs = self._postprocess(output, orig_w, orig_h, scale, pad_x, pad_y)
 
-        Returns:
-            DetectionResult dengan jumlah, frame teranotasi, scores, dan boxes
-        """
-        results = self.model(image, verbose=False)[0]
-
-        count = 0
-        confidence_scores = []
-        bounding_boxes = []
         annotated = image.copy()
-
-        for box in results.boxes:
-            cls_id = int(box.cls[0])
-            conf = float(box.conf[0])
-
-            # Filter berdasarkan kelas dan confidence
-            if self._is_target_class(cls_id) and conf >= self.confidence_threshold:
-                x1, y1, x2, y2 = map(int, box.xyxy[0])
-                count += 1
-                confidence_scores.append(round(conf, 3))
-                bounding_boxes.append((x1, y1, x2, y2))
-
-                # Gambar bounding box
-                self._draw_box(annotated, x1, y1, x2, y2, conf, count)
-
-        # Tampilkan total count di pojok kiri atas
-        self._draw_count_overlay(annotated, count)
+        for i, (x1, y1, x2, y2) in enumerate(boxes):
+            self._draw_box(annotated, x1, y1, x2, y2, confs[i], i + 1)
+        self._draw_overlay(annotated, len(boxes))
 
         return DetectionResult(
-            count=count,
+            count=len(boxes),
             annotated_frame=annotated,
-            confidence_scores=confidence_scores,
-            bounding_boxes=bounding_boxes,
+            confidence_scores=[round(c, 3) for c in confs],
+            bounding_boxes=list(boxes),
         )
 
     def process_image_file(self, input_path: str, output_path: str) -> DetectionResult:
-        """
-        Proses file gambar dari disk.
-
-        Args:
-            input_path: Path gambar input
-            output_path: Path untuk menyimpan gambar hasil anotasi
-        """
         image = cv2.imread(input_path)
         if image is None:
             raise ValueError(f"Tidak bisa membaca gambar: {input_path}")
-
         result = self.detect_image(image)
         cv2.imwrite(output_path, result.annotated_frame)
         return result
 
-    def process_video_file(
-        self,
-        input_path: str,
-        output_path: str,
-        progress_callback=None,
-    ) -> dict:
-        """
-        Proses file video, anotasi setiap frame, dan simpan video hasil.
-
-        Args:
-            input_path: Path video input
-            output_path: Path video output (MP4)
-            progress_callback: Fungsi callback(frame_idx, total_frames, count)
-
-        Returns:
-            dict berisi statistik: total_frames, avg_count, max_count, min_count
-        """
+    def process_video_file(self, input_path: str, output_path: str, progress_callback=None) -> dict:
         cap = cv2.VideoCapture(input_path)
         if not cap.isOpened():
             raise ValueError(f"Tidak bisa membuka video: {input_path}")
 
         fps = cap.get(cv2.CAP_PROP_FPS) or 25
-        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
-        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-        writer = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
-
-        frame_counts = []
-        frame_idx = 0
-
+        writer = cv2.VideoWriter(output_path, cv2.VideoWriter_fourcc(*"mp4v"), fps, (w, h))
+        counts, idx = [], 0
         try:
             while True:
                 ret, frame = cap.read()
                 if not ret:
                     break
-
-                result = self.detect_image(frame)
-                frame_counts.append(result.count)
-                writer.write(result.annotated_frame)
-
-                frame_idx += 1
+                r = self.detect_image(frame)
+                counts.append(r.count)
+                writer.write(r.annotated_frame)
+                idx += 1
                 if progress_callback:
-                    progress_callback(frame_idx, total_frames, result.count)
+                    progress_callback(idx, total, r.count)
         finally:
             cap.release()
             writer.release()
 
-        if not frame_counts:
+        if not counts:
             return {"total_frames": 0, "avg_count": 0, "max_count": 0, "min_count": 0}
-
         return {
-            "total_frames": len(frame_counts),
-            "avg_count": round(sum(frame_counts) / len(frame_counts), 1),
-            "max_count": max(frame_counts),
-            "min_count": min(frame_counts),
+            "total_frames": len(counts),
+            "avg_count": round(sum(counts) / len(counts), 1),
+            "max_count": max(counts),
+            "min_count": min(counts),
         }
 
-    def _is_target_class(self, cls_id: int) -> bool:
-        if self.is_custom_model:
-            # Untuk custom model, semua kelas dianggap karung (atau sesuai mapping)
-            return True
-        return cls_id in self.target_class_ids
+    def _preprocess(self, image):
+        h, w = image.shape[:2]
+        scale = min(INPUT_SIZE / w, INPUT_SIZE / h)
+        new_w, new_h = int(w * scale), int(h * scale)
+        resized = cv2.resize(image, (new_w, new_h))
 
-    def _draw_box(
-        self,
-        image: np.ndarray,
-        x1: int, y1: int, x2: int, y2: int,
-        conf: float,
-        number: int,
-    ):
-        """Gambar bounding box + label pada frame."""
-        color = (0, 200, 50)  # Hijau
-        thickness = 2
+        padded = np.full((INPUT_SIZE, INPUT_SIZE, 3), 114, dtype=np.uint8)
+        pad_x = (INPUT_SIZE - new_w) // 2
+        pad_y = (INPUT_SIZE - new_h) // 2
+        padded[pad_y:pad_y + new_h, pad_x:pad_x + new_w] = resized
 
-        cv2.rectangle(image, (x1, y1), (x2, y2), color, thickness)
+        blob = padded[:, :, ::-1].transpose(2, 0, 1).astype(np.float32) / 255.0
+        return blob[np.newaxis], scale, pad_x, pad_y
 
-        label = f"Karung #{number} ({conf:.0%})"
-        font = cv2.FONT_HERSHEY_SIMPLEX
-        font_scale = 0.6
-        (lw, lh), baseline = cv2.getTextSize(label, font, font_scale, 1)
+    def _postprocess(self, output, orig_w, orig_h, scale, pad_x, pad_y):
+        preds = output[0][0].T  # [8400, 84]
+        scores = preds[:, 4:]
+        class_ids = np.argmax(scores, axis=1)
+        confidences = np.max(scores, axis=1)
 
-        # Background label
-        cv2.rectangle(
-            image,
-            (x1, y1 - lh - baseline - 4),
-            (x1 + lw + 4, y1),
-            color,
-            -1,
+        mask = (
+            np.isin(class_ids, list(TARGET_CLASSES))
+            & (confidences >= self.confidence_threshold)
         )
-        cv2.putText(
-            image,
-            label,
-            (x1 + 2, y1 - baseline - 2),
-            font,
-            font_scale,
-            (0, 0, 0),
-            1,
-            cv2.LINE_AA,
-        )
+        preds_f = preds[mask]
+        confs_f = confidences[mask]
 
-    def _draw_count_overlay(self, image: np.ndarray, count: int):
-        """Tampilkan total hitungan di pojok kiri atas frame."""
+        if len(preds_f) == 0:
+            return [], []
+
+        cx, cy, bw, bh = preds_f[:, 0], preds_f[:, 1], preds_f[:, 2], preds_f[:, 3]
+        x1 = np.clip(((cx - bw / 2 - pad_x) / scale), 0, orig_w).astype(int)
+        y1 = np.clip(((cy - bh / 2 - pad_y) / scale), 0, orig_h).astype(int)
+        x2 = np.clip(((cx + bw / 2 - pad_x) / scale), 0, orig_w).astype(int)
+        y2 = np.clip(((cy + bh / 2 - pad_y) / scale), 0, orig_h).astype(int)
+
+        nms_boxes = [[int(x1[i]), int(y1[i]), int(x2[i] - x1[i]), int(y2[i] - y1[i])] for i in range(len(x1))]
+        indices = cv2.dnn.NMSBoxes(nms_boxes, confs_f.tolist(), self.confidence_threshold, 0.45)
+        if len(indices) == 0:
+            return [], []
+
+        idx = indices.flatten()
+        boxes = [(x1[i], y1[i], x2[i], y2[i]) for i in idx]
+        confs = [float(confs_f[i]) for i in idx]
+        return boxes, confs
+
+    def _draw_box(self, img, x1, y1, x2, y2, conf, n):
+        color = (0, 200, 50)
+        cv2.rectangle(img, (x1, y1), (x2, y2), color, 2)
+        label = f"Karung #{n} ({conf:.0%})"
+        (lw, lh), bl = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 1)
+        cv2.rectangle(img, (x1, y1 - lh - bl - 4), (x1 + lw + 4, y1), color, -1)
+        cv2.putText(img, label, (x1 + 2, y1 - bl - 2), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 1, cv2.LINE_AA)
+
+    def _draw_overlay(self, img, count):
         text = f"Total Karung: {count}"
-        font = cv2.FONT_HERSHEY_SIMPLEX
-        font_scale = 1.2
-        thickness = 2
-        color_bg = (0, 0, 0)
-        color_text = (0, 255, 100)
-
-        (tw, th), baseline = cv2.getTextSize(text, font, font_scale, thickness)
-        padding = 10
-
-        cv2.rectangle(
-            image,
-            (0, 0),
-            (tw + padding * 2, th + baseline + padding * 2),
-            color_bg,
-            -1,
-        )
-        cv2.putText(
-            image,
-            text,
-            (padding, th + padding),
-            font,
-            font_scale,
-            color_text,
-            thickness,
-            cv2.LINE_AA,
-        )
+        (tw, th), bl = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 1.2, 2)
+        p = 10
+        cv2.rectangle(img, (0, 0), (tw + p * 2, th + bl + p * 2), (0, 0, 0), -1)
+        cv2.putText(img, text, (p, th + p), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 255, 100), 2, cv2.LINE_AA)
