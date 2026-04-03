@@ -2,12 +2,7 @@
 # OpenCV headless membutuhkan beberapa library sistem
 
 [phases.setup]
-nixPkgs = [
-  "python312",
-  "libGL",        # OpenCV dependency
-  "libglib2",     # OpenCV dependency
-  "ffmpeg",       # Video processing
-]
+nixPkgs = ["ffmpeg"]
 
 [phases.install]
 cmds = [
