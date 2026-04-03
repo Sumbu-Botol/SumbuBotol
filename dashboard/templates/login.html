@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Login – SumbuBotol</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-950 text-gray-100 min-h-screen flex items-center justify-center font-mono">
+  <div class="bg-gray-900 border border-gray-800 rounded-xl p-8 w-full max-w-sm">
+    <h1 class="text-2xl font-bold text-yellow-400 mb-6 text-center">🤖 SumbuBotol</h1>
+    {% if error %}
+    <p class="text-red-400 text-sm mb-4 text-center">{{ error }}</p>
+    {% endif %}
+    <form method="post" action="/login" class="flex flex-col gap-4">
+      <input type="password" name="password" placeholder="Password"
+             class="bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 focus:outline-none focus:border-yellow-400"/>
+      <button type="submit"
+              class="bg-yellow-400 text-gray-950 font-bold rounded-lg py-2 hover:bg-yellow-300">
+        Masuk
+      </button>
+    </form>
+  </div>
+</body>
+</html>

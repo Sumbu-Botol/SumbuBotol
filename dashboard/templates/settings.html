@@ -1,0 +1,224 @@
+{% extends "base.html" %}
+{% block content %}
+<h2 class="text-xl font-bold mb-6">⚙️ Settings Bot Trading</h2>
+
+<!-- Tab Nav -->
+<div class="flex gap-2 mb-6">
+  <button onclick="showTab('bybit')" id="tab-bybit"
+          class="tab-btn px-4 py-2 rounded-lg text-sm font-semibold transition-colors bg-yellow-400 text-gray-950">
+    Bybit
+  </button>
+  <button onclick="showTab('hl')" id="tab-hl"
+          class="tab-btn px-4 py-2 rounded-lg text-sm font-semibold transition-colors bg-gray-800 text-gray-300">
+    Hyperliquid
+  </button>
+</div>
+
+<!-- ── BYBIT SETTINGS ─────────────────────────────────────── -->
+<div id="pane-bybit">
+  <div class="bg-gray-900 border border-gray-800 rounded-xl p-6 max-w-lg">
+    <p class="text-xs text-gray-500 mb-4">Pengaturan bot trading di <span class="text-yellow-400 font-semibold">Bybit Perpetual Futures</span></p>
+    <form id="bybitForm" class="flex flex-col gap-4">
+
+      <div>
+        <label class="text-xs text-gray-500">Trading Pair</label>
+        <input name="BYBIT_BOT_PAIR" value="{{ config.BYBIT_BOT_PAIR }}"
+               placeholder="BTC"
+               class="w-full mt-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-yellow-400"/>
+        <p class="text-xs text-gray-600 mt-1">Contoh: BTC, ETH, SOL (tanpa USDT/USDC)</p>
+      </div>
+
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="text-xs text-gray-500">Timeframe</label>
+          <select name="BYBIT_BOT_TIMEFRAME"
+                  class="w-full mt-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-yellow-400">
+            {% for tf in ['1m','5m','15m','30m','1h','4h'] %}
+            <option value="{{ tf }}" {% if config.BYBIT_BOT_TIMEFRAME == tf %}selected{% endif %}>{{ tf }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="text-xs text-gray-500">Leverage</label>
+          <input name="BYBIT_BOT_LEVERAGE" type="number" min="1" max="100" value="{{ config.BYBIT_BOT_LEVERAGE }}"
+                 class="w-full mt-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-yellow-400"/>
+        </div>
+      </div>
+
+      <div>
+        <label class="text-xs text-gray-500">Trade Size (USDT per trade)</label>
+        <input name="BYBIT_BOT_SIZE" type="number" step="1" value="{{ config.BYBIT_BOT_SIZE }}"
+               class="w-full mt-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-yellow-400"/>
+      </div>
+
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="text-xs text-gray-500">Take Profit (%)</label>
+          <input name="BYBIT_BOT_TP" type="number" step="0.1" value="{{ config.BYBIT_BOT_TP or '' }}"
+                 placeholder="Dari persona"
+                 class="w-full mt-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-yellow-400"/>
+        </div>
+        <div>
+          <label class="text-xs text-gray-500">Stop Loss (%)</label>
+          <input name="BYBIT_BOT_SL" type="number" step="0.1" value="{{ config.BYBIT_BOT_SL or '' }}"
+                 placeholder="Dari persona"
+                 class="w-full mt-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-yellow-400"/>
+        </div>
+      </div>
+
+      <div>
+        <label class="text-xs text-gray-500">Gaya Trading (Persona)</label>
+        <select name="BYBIT_BOT_PERSONA"
+                class="w-full mt-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-yellow-400">
+          {% for p in personas %}
+          <option value="{{ p.id }}" {% if config.BYBIT_BOT_PERSONA == p.id %}selected{% endif %}>
+            {{ p.emoji }} {{ p.name }} — {{ p.style }}
+          </option>
+          {% endfor %}
+        </select>
+        <p class="text-xs text-gray-600 mt-1" id="bybitPersonaDesc">
+          {% for p in personas %}{% if config.BYBIT_BOT_PERSONA == p.id %}{{ p.description }}{% endif %}{% endfor %}
+        </p>
+      </div>
+
+      <button type="submit"
+              class="bg-yellow-400 text-gray-950 font-bold rounded-lg py-2 hover:bg-yellow-300 mt-2">
+        💾 Simpan Bybit
+      </button>
+    </form>
+    <p id="bybitMsg" class="text-green-400 text-sm mt-3 hidden">✅ Settings Bybit disimpan</p>
+  </div>
+</div>
+
+<!-- ── HYPERLIQUID SETTINGS ───────────────────────────────── -->
+<div id="pane-hl" class="hidden">
+  <div class="bg-gray-900 border border-gray-800 rounded-xl p-6 max-w-lg">
+    <p class="text-xs text-gray-500 mb-4">Pengaturan bot trading di <span class="text-blue-400 font-semibold">Hyperliquid Perpetual</span></p>
+    <form id="hlForm" class="flex flex-col gap-4">
+
+      <div>
+        <label class="text-xs text-gray-500">Trading Pair</label>
+        <input name="HL_BOT_PAIR" value="{{ config.HL_BOT_PAIR }}"
+               placeholder="BTC"
+               class="w-full mt-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-yellow-400"/>
+        <p class="text-xs text-gray-600 mt-1">Contoh: BTC, ETH, SOL</p>
+      </div>
+
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="text-xs text-gray-500">Timeframe</label>
+          <select name="HL_BOT_TIMEFRAME"
+                  class="w-full mt-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-yellow-400">
+            {% for tf in ['1m','5m','15m','30m','1h','4h'] %}
+            <option value="{{ tf }}" {% if config.HL_BOT_TIMEFRAME == tf %}selected{% endif %}>{{ tf }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="text-xs text-gray-500">Leverage</label>
+          <input name="HL_BOT_LEVERAGE" type="number" min="1" max="100" value="{{ config.HL_BOT_LEVERAGE }}"
+                 class="w-full mt-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-yellow-400"/>
+        </div>
+      </div>
+
+      <div>
+        <label class="text-xs text-gray-500">Trade Size (USDC per trade)</label>
+        <input name="HL_BOT_SIZE" type="number" step="1" value="{{ config.HL_BOT_SIZE }}"
+               class="w-full mt-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-yellow-400"/>
+      </div>
+
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="text-xs text-gray-500">Take Profit (%)</label>
+          <input name="HL_BOT_TP" type="number" step="0.1" value="{{ config.HL_BOT_TP or '' }}"
+                 placeholder="Dari persona"
+                 class="w-full mt-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-yellow-400"/>
+        </div>
+        <div>
+          <label class="text-xs text-gray-500">Stop Loss (%)</label>
+          <input name="HL_BOT_SL" type="number" step="0.1" value="{{ config.HL_BOT_SL or '' }}"
+                 placeholder="Dari persona"
+                 class="w-full mt-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-yellow-400"/>
+        </div>
+      </div>
+
+      <div>
+        <label class="text-xs text-gray-500">Gaya Trading (Persona)</label>
+        <select name="HL_BOT_PERSONA"
+                class="w-full mt-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-yellow-400">
+          {% for p in personas %}
+          <option value="{{ p.id }}" {% if config.HL_BOT_PERSONA == p.id %}selected{% endif %}>
+            {{ p.emoji }} {{ p.name }} — {{ p.style }}
+          </option>
+          {% endfor %}
+        </select>
+        <p class="text-xs text-gray-600 mt-1" id="hlPersonaDesc">
+          {% for p in personas %}{% if config.HL_BOT_PERSONA == p.id %}{{ p.description }}{% endif %}{% endfor %}
+        </p>
+      </div>
+
+      <button type="submit"
+              class="bg-blue-500 text-white font-bold rounded-lg py-2 hover:bg-blue-400 mt-2">
+        💾 Simpan Hyperliquid
+      </button>
+    </form>
+    <p id="hlMsg" class="text-green-400 text-sm mt-3 hidden">✅ Settings Hyperliquid disimpan</p>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const PERSONA_DESC = {
+  {% for p in personas %}"{{ p.id }}": "{{ p.emoji }} {{ p.description }}",
+  {% endfor %}
+};
+
+function showTab(tab) {
+  document.getElementById('pane-bybit').classList.toggle('hidden', tab !== 'bybit');
+  document.getElementById('pane-hl').classList.toggle('hidden', tab !== 'hl');
+  document.getElementById('tab-bybit').className =
+    'tab-btn px-4 py-2 rounded-lg text-sm font-semibold transition-colors ' +
+    (tab === 'bybit' ? 'bg-yellow-400 text-gray-950' : 'bg-gray-800 text-gray-300');
+  document.getElementById('tab-hl').className =
+    'tab-btn px-4 py-2 rounded-lg text-sm font-semibold transition-colors ' +
+    (tab === 'hl' ? 'bg-blue-500 text-white' : 'bg-gray-800 text-gray-300');
+}
+
+// Live persona description update
+document.querySelector('[name="BYBIT_BOT_PERSONA"]').addEventListener('change', e => {
+  document.getElementById('bybitPersonaDesc').textContent = PERSONA_DESC[e.target.value] || '';
+});
+document.querySelector('[name="HL_BOT_PERSONA"]').addEventListener('change', e => {
+  document.getElementById('hlPersonaDesc').textContent = PERSONA_DESC[e.target.value] || '';
+});
+
+// Save Bybit
+document.getElementById('bybitForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const data = {};
+  fd.forEach((v, k) => { data[k] = (v === '' ? null : (isNaN(v) ? v : Number(v))); });
+  await fetch('/api/settings/bybit', {
+    method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(data)
+  });
+  const msg = document.getElementById('bybitMsg');
+  msg.classList.remove('hidden');
+  setTimeout(() => msg.classList.add('hidden'), 3000);
+});
+
+// Save Hyperliquid
+document.getElementById('hlForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const data = {};
+  fd.forEach((v, k) => { data[k] = (v === '' ? null : (isNaN(v) ? v : Number(v))); });
+  await fetch('/api/settings/hyperliquid', {
+    method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(data)
+  });
+  const msg = document.getElementById('hlMsg');
+  msg.classList.remove('hidden');
+  setTimeout(() => msg.classList.add('hidden'), 3000);
+});
+</script>
+{% endblock %}

@@ -1,0 +1,656 @@
+{% extends "base.html" %}
+{% block content %}
+
+<!-- Status bar -->
+<div class="mb-6 space-y-3">
+  <!-- Row 1: Title + persona -->
+  <div class="flex items-center justify-between">
+    <div>
+      <h2 class="text-xl font-bold">Dashboard</h2>
+      {% if active_persona %}
+      <a href="/personas" class="text-xs hover:underline" style="color: {{ active_persona.color }}">
+        {{ active_persona.emoji }} {{ active_persona.name }} · {{ active_persona.style }}
+      </a>
+      {% endif %}
+    </div>
+    <span class="text-xs text-gray-500 text-right">{{ now }}</span>
+  </div>
+  <!-- Row 2: Exchange switcher + Bot controls -->
+  <div class="flex items-center gap-2 flex-wrap">
+    <!-- Exchange Switcher -->
+    <div class="flex rounded-lg overflow-hidden border border-gray-700 text-xs font-bold">
+      <button onclick="switchExchange('bybit')"
+              id="btn-bybit"
+              class="px-3 py-2 transition-all {% if active_exchange == 'bybit' %}bg-yellow-400 text-black{% else %}bg-gray-800 text-gray-400 hover:text-white{% endif %}">
+        Bybit
+      </button>
+      <button onclick="switchExchange('hyperliquid')"
+              id="btn-hyperliquid"
+              class="px-3 py-2 transition-all {% if active_exchange == 'hyperliquid' %}bg-yellow-400 text-black{% else %}bg-gray-800 text-gray-400 hover:text-white{% endif %}">
+        Hyperliquid
+      </button>
+      <button onclick="switchExchange('polymarket')"
+              id="btn-polymarket"
+              class="px-3 py-2 transition-all {% if active_exchange == 'polymarket' %}bg-blue-500 text-white{% else %}bg-gray-800 text-gray-400 hover:text-white{% endif %}">
+        Polymarket
+      </button>
+    </div>
+    <span class="text-gray-600">|</span>
+    {% if active_exchange == 'bybit' %}
+      {% if bybit_bot_running %}
+        <span class="bg-green-500 text-black text-xs font-bold px-3 py-1 rounded-full">🟢 BOT RUNNING</span>
+        <button onclick="botAction('bybit/bot/stop')"
+                class="bg-red-600 hover:bg-red-500 text-white text-xs px-3 py-2 rounded-lg">Stop Bot</button>
+      {% else %}
+        <span class="bg-gray-700 text-gray-300 text-xs font-bold px-3 py-1 rounded-full">⚫ BOT STOPPED</span>
+        <button onclick="botAction('bybit/bot/start')"
+                class="bg-green-600 hover:bg-green-500 text-white text-xs px-3 py-2 rounded-lg">Start Bot</button>
+      {% endif %}
+      <button onclick="botAction('bybit/bot/close-all')"
+              class="bg-orange-600 hover:bg-orange-500 text-white text-xs px-3 py-2 rounded-lg">Close All</button>
+    {% else %}
+      {% if bot_running %}
+        <span class="bg-green-500 text-black text-xs font-bold px-3 py-1 rounded-full">🟢 BOT RUNNING</span>
+        <button onclick="botAction('bot/stop')"
+                class="bg-red-600 hover:bg-red-500 text-white text-xs px-3 py-2 rounded-lg">Stop Bot</button>
+      {% else %}
+        <span class="bg-gray-700 text-gray-300 text-xs font-bold px-3 py-1 rounded-full">⚫ BOT STOPPED</span>
+        <button onclick="botAction('bot/start')"
+                class="bg-green-600 hover:bg-green-500 text-white text-xs px-3 py-2 rounded-lg">Start Bot</button>
+      {% endif %}
+      <button onclick="botAction('bot/close-all')"
+              class="bg-orange-600 hover:bg-orange-500 text-white text-xs px-3 py-2 rounded-lg">Close All</button>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Stats cards -->
+<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+  <div class="bg-gray-900 border border-gray-800 rounded-xl p-4">
+    <p class="text-gray-500 text-xs">Balance</p>
+    <p class="text-2xl font-bold text-yellow-400">${{ "%.2f"|format(balance) }}</p>
+    <p class="text-xs text-gray-500">USDC</p>
+  </div>
+  <div class="bg-gray-900 border border-gray-800 rounded-xl p-4">
+    <p class="text-gray-500 text-xs">P&L Hari Ini</p>
+    <p class="text-2xl font-bold {% if stats.daily_pnl >= 0 %}text-green-400{% else %}text-red-400{% endif %}">
+      {% if stats.daily_pnl >= 0 %}+{% endif %}${{ "%.2f"|format(stats.daily_pnl) }}
+    </p>
+    <p class="text-xs text-gray-500">USDC</p>
+  </div>
+  <div class="bg-gray-900 border border-gray-800 rounded-xl p-4">
+    <p class="text-gray-500 text-xs">Total P&L</p>
+    <p class="text-2xl font-bold {% if stats.total_pnl >= 0 %}text-green-400{% else %}text-red-400{% endif %}">
+      {% if stats.total_pnl >= 0 %}+{% endif %}${{ "%.2f"|format(stats.total_pnl) }}
+    </p>
+    <p class="text-xs text-gray-500">USDC</p>
+  </div>
+  <div class="bg-gray-900 border border-gray-800 rounded-xl p-4">
+    <p class="text-gray-500 text-xs">Win Rate</p>
+    <p class="text-2xl font-bold text-blue-400">{{ stats.win_rate }}%</p>
+    <p class="text-xs text-gray-500">{{ stats.win_trades }}W / {{ stats.loss_trades }}L</p>
+  </div>
+</div>
+
+<!-- P&L Chart -->
+<div class="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-6">
+  <h3 class="text-sm font-bold text-gray-400 mb-3">Cumulative P&L</h3>
+  <canvas id="pnlChart" height="80"></canvas>
+</div>
+
+<!-- Bybit Live Positions (monitor + control) -->
+<div class="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-6" id="bybitPanel">
+  <!-- Row 1: judul + refresh -->
+  <div class="flex items-center justify-between mb-1">
+    <h3 class="text-sm font-bold text-gray-400">Bybit — Posisi Aktif</h3>
+    <div class="flex items-center gap-3">
+      <button onclick="loadBybit()" class="text-xs text-yellow-400 hover:underline flex-shrink-0">↻ Refresh</button>
+      <button onclick="testOrder()" class="text-xs bg-purple-700 hover:bg-purple-600 text-white px-2 py-1 rounded flex-shrink-0">⚡ Test Order</button>
+    </div>
+  </div>
+  <!-- Row 2: balance -->
+  <p class="text-xs text-gray-400 mb-3" id="bybitBalanceLabel"></p>
+
+  <div id="bybitPositions">
+    <p class="text-gray-600 text-sm">Memuat posisi...</p>
+  </div>
+</div>
+
+<!-- Polymarket Panel -->
+<div class="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-6" id="polyPanel">
+  <div class="flex items-center justify-between mb-3">
+    <h3 class="text-sm font-bold text-gray-400">Polymarket — Popular Markets</h3>
+    <button onclick="loadPoly()" class="text-xs text-blue-400 hover:underline">↻ Refresh</button>
+  </div>
+  <p class="text-xs text-gray-500 mb-2" id="polyBalanceLabel"></p>
+
+  <!-- Bot Controls -->
+  <div class="bg-gray-800/60 rounded-lg p-3 mb-4">
+    <div class="flex items-center justify-between mb-2">
+      <span class="text-xs text-gray-400 font-semibold uppercase tracking-wide">Auto-Bot</span>
+      <span id="polyBotStatus" class="text-xs text-gray-500">Loading...</span>
+    </div>
+    <div class="flex gap-2 mb-2">
+      <button onclick="polyBotAction('start')" class="flex-1 bg-green-700 hover:bg-green-600 text-white py-1.5 rounded text-xs font-bold">▶ Start</button>
+      <button onclick="polyBotAction('stop')"  class="flex-1 bg-red-800 hover:bg-red-700 text-white py-1.5 rounded text-xs font-bold">■ Stop</button>
+      <button onclick="scanOpportunities()"    class="flex-1 bg-blue-700 hover:bg-blue-600 text-white py-1.5 rounded text-xs font-bold">🔍 Scan</button>
+    </div>
+    <div id="polyOpportunities"></div>
+    <!-- Bot Logs -->
+    <div id="polyLogs" class="mt-2 bg-gray-900 rounded p-2 max-h-40 overflow-y-auto text-[10px] font-mono text-gray-400 hidden"></div>
+  </div>
+
+  <!-- Positions -->
+  <div id="polyPositions" class="mb-4"></div>
+
+  <!-- History -->
+  <div id="polyHistory" class="mb-4"></div>
+
+  <!-- Popular Markets -->
+  <h4 class="text-xs text-gray-500 mb-2 font-semibold uppercase tracking-wide">Top Markets by Volume</h4>
+  <div id="polyMarkets">
+    <p class="text-gray-600 text-sm">Memuat markets...</p>
+  </div>
+</div>
+
+<!-- TP/SL Modal -->
+<div id="tpslModal" class="hidden fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">
+  <div class="bg-gray-900 border border-gray-700 rounded-xl p-5 w-80 mx-4">
+    <h3 class="font-bold mb-3" id="tpslTitle">Set TP / SL</h3>
+    <input id="tpslSymbol" type="hidden"/>
+    <div class="space-y-3">
+      <div>
+        <label class="text-xs text-gray-400">Take Profit (0 = hapus)</label>
+        <input id="tpInput" type="number" step="0.01" placeholder="0"
+               class="w-full mt-1 bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm"/>
+      </div>
+      <div>
+        <label class="text-xs text-gray-400">Stop Loss (0 = hapus)</label>
+        <input id="slInput" type="number" step="0.01" placeholder="0"
+               class="w-full mt-1 bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm"/>
+      </div>
+    </div>
+    <div class="flex gap-2 mt-4">
+      <button onclick="submitTpSl()" class="flex-1 bg-yellow-400 text-black font-bold rounded py-2 text-sm">Simpan</button>
+      <button onclick="document.getElementById('tpslModal').classList.add('hidden')"
+              class="flex-1 bg-gray-800 text-gray-300 rounded py-2 text-sm">Batal</button>
+    </div>
+  </div>
+</div>
+
+<!-- Open positions -->
+<div class="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-6">
+  <h3 class="text-sm font-bold text-gray-400 mb-3">Posisi Terbuka</h3>
+  {% if open_positions %}
+  <table class="w-full text-sm">
+    <thead><tr class="text-gray-500 text-xs">
+      <th class="text-left py-1">Coin</th>
+      <th class="text-left py-1">Side</th>
+      <th class="text-right py-1">Entry</th>
+      <th class="text-right py-1">Size</th>
+      <th class="text-right py-1">Unreal. P&L</th>
+    </tr></thead>
+    <tbody>
+    {% for pos in open_positions %}
+    <tr class="border-t border-gray-800">
+      <td class="py-2 font-bold">{{ pos.coin }}</td>
+      <td class="py-2 {% if pos.side == 'LONG' %}text-green-400{% else %}text-red-400{% endif %}">{{ pos.side }}</td>
+      <td class="py-2 text-right">${{ "%.4f"|format(pos.entry_price) }}</td>
+      <td class="py-2 text-right">{{ "%.4f"|format(pos.size) }}</td>
+      <td class="py-2 text-right {% if pos.unrealized_pnl >= 0 %}text-green-400{% else %}text-red-400{% endif %}">
+        {% if pos.unrealized_pnl >= 0 %}+{% endif %}${{ "%.2f"|format(pos.unrealized_pnl) }}
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="text-gray-600 text-sm">Tidak ada posisi terbuka</p>
+  {% endif %}
+</div>
+
+<!-- Recent trades -->
+<div class="bg-gray-900 border border-gray-800 rounded-xl p-4">
+  <div class="flex justify-between items-center mb-3">
+    <h3 class="text-sm font-bold text-gray-400">Trade Terakhir</h3>
+    <a href="/history" class="text-xs text-yellow-400 hover:underline">Lihat semua →</a>
+  </div>
+  <table class="w-full text-xs">
+    <thead><tr class="text-gray-500">
+      <th class="text-left py-1">Pair</th>
+      <th class="text-left py-1">Side</th>
+      <th class="text-right py-1">Entry</th>
+      <th class="text-right py-1">Exit</th>
+      <th class="text-right py-1">P&L</th>
+      <th class="text-right py-1">Status</th>
+    </tr></thead>
+    <tbody>
+    {% for t in recent_trades %}
+    <tr class="border-t border-gray-800">
+      <td class="py-1">{{ t.pair }}</td>
+      <td class="py-1 {% if t.side == 'LONG' %}text-green-400{% else %}text-red-400{% endif %}">{{ t.side }}</td>
+      <td class="py-1 text-right">${{ "%.4f"|format(t.entry_price) }}</td>
+      <td class="py-1 text-right">{% if t.exit_price %}${{ "%.4f"|format(t.exit_price) }}{% else %}-{% endif %}</td>
+      <td class="py-1 text-right {% if t.pnl_usdc and t.pnl_usdc >= 0 %}text-green-400{% elif t.pnl_usdc %}text-red-400{% endif %}">
+        {% if t.pnl_usdc %}{% if t.pnl_usdc >= 0 %}+{% endif %}${{ "%.2f"|format(t.pnl_usdc) }}{% else %}-{% endif %}
+      </td>
+      <td class="py-1 text-right">
+        {% if t.status == 'open' %}<span class="text-yellow-400">OPEN</span>
+        {% elif t.close_reason == 'TP' %}<span class="text-green-400">TP</span>
+        {% elif t.close_reason == 'SL' %}<span class="text-red-400">SL</span>
+        {% else %}<span class="text-gray-400">{{ t.status }}</span>{% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ── Exchange Switcher ──────────────────────────────────────────────────────
+async function switchExchange(ex) {
+  await fetch('/api/exchange/switch', {
+    method: 'POST', credentials: 'same-origin',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({exchange: ex}),
+  });
+  location.reload();
+}
+
+// ── Bot Actions ────────────────────────────────────────────────────────────
+async function botAction(action) {
+  if (action.endsWith('close-all') && !confirm('Tutup semua posisi?')) return;
+  await fetch(`/api/${action}`, {method: 'POST', credentials: 'same-origin'});
+  location.reload();
+}
+
+// ── Bybit Position Monitor ─────────────────────────────────────────────────
+let _bybitPositions = [];
+let _bybitEmptyCount = 0;
+const EMPTY_CONFIRM = 4;
+let _bybitLoading = false;
+
+async function loadBybit() {
+  if (_bybitLoading) return;   // skip kalau request sebelumnya belum selesai
+  _bybitLoading = true;
+  try {
+    const [posResp, balResp] = await Promise.all([
+      fetch('/api/bybit/positions', {credentials: 'same-origin'}),
+      fetch('/api/bybit/balance', {credentials: 'same-origin'}),
+    ]);
+    if (!posResp.ok || !balResp.ok) throw new Error('HTTP ' + posResp.status);
+    const pos = await posResp.json();
+    const bal = await balResp.json();
+
+    // Parse posisi — kalau ada error field, anggap gagal (null), bukan kosong
+    let newPositions = null;
+    if (Array.isArray(pos)) {
+      newPositions = pos;
+    } else if (Array.isArray(pos.positions) && !pos.error) {
+      newPositions = pos.positions;
+    }
+    // pos.error = backend error → newPositions tetap null → data lama tidak disentuh
+
+    if (newPositions !== null) {
+      if (newPositions.length > 0) {
+        _bybitPositions = newPositions;
+        _bybitEmptyCount = 0;
+      } else {
+        _bybitEmptyCount++;
+        if (_bybitEmptyCount >= EMPTY_CONFIRM) {
+          _bybitPositions = [];
+        }
+      }
+      renderBybitPositions();
+    } else if (_bybitPositions.length === 0) {
+      // Error tapi belum pernah dapat data — render kosong (hapus "Memuat posisi...")
+      renderBybitPositions();
+    }
+
+    // Balance update — hanya kalau tidak ada error (jangan timpa dengan $0.00)
+    if (bal && !bal.error && (bal.USDT || bal.USDC)) {
+      const balLabel = `USDT: $${(bal.USDT || 0).toFixed(2)} · USDC: $${(bal.USDC || 0).toFixed(2)}`;
+      document.getElementById('bybitBalanceLabel').textContent = balLabel;
+    }
+  } catch(e) {
+    console.error('[Bybit] refresh error, data lama tetap tampil:', e.message);
+  } finally {
+    _bybitLoading = false;
+  }
+}
+
+function renderBybitPositions() {
+  const el = document.getElementById('bybitPositions');
+  if (!_bybitPositions.length) {
+    el.innerHTML = '<p class="text-gray-600 text-sm">Tidak ada posisi terbuka.</p>';
+    return;
+  }
+  el.innerHTML = _bybitPositions.map(p => {
+    const pnlColor  = p.unrealized_pnl >= 0 ? 'text-green-400' : 'text-red-400';
+    const sideColor = p.side === 'Buy' ? 'text-green-400' : 'text-red-400';
+    const sideTxt   = p.side === 'Buy' ? 'LONG' : 'SHORT';
+    const pnlSign   = p.unrealized_pnl >= 0 ? '+' : '';
+    const settleBadge = p.settle === 'USDC'
+      ? 'bg-blue-900 text-blue-300' : 'bg-green-900 text-green-300';
+    return `
+    <div class="border border-gray-700 rounded-xl p-4 mb-3 bg-gray-800/40">
+
+      <!-- Baris 1: Symbol · Side · Badge · Leverage -->
+      <div class="flex items-center gap-2 mb-2 flex-wrap">
+        <span class="font-bold text-white">${p.symbol}</span>
+        <span class="font-bold text-sm ${sideColor}">${sideTxt}</span>
+        <span class="px-1.5 py-0.5 rounded text-[10px] font-medium ${settleBadge}">${p.settle}</span>
+        <span class="text-gray-500 text-xs">${p.leverage}x</span>
+      </div>
+
+      <!-- Baris 2: uPnL -->
+      <div class="mb-3">
+        <span class="text-2xl font-bold ${pnlColor}">${pnlSign}$${p.unrealized_pnl.toFixed(2)}</span>
+        <span class="text-sm text-gray-500 ml-1">(${p.pnl_pct >= 0 ? '+' : ''}${p.pnl_pct}%)</span>
+      </div>
+
+      <!-- Baris 3: grid detail 3 kolom -->
+      <div class="grid grid-cols-3 gap-2 text-xs">
+        <div class="bg-gray-900/60 rounded-lg p-2">
+          <div class="text-gray-500 mb-0.5">Size</div>
+          <div class="text-white font-medium">${p.size}</div>
+        </div>
+        <div class="bg-gray-900/60 rounded-lg p-2">
+          <div class="text-gray-500 mb-0.5">Entry</div>
+          <div class="text-white font-medium">$${p.entry_price.toFixed(2)}</div>
+        </div>
+        <div class="bg-gray-900/60 rounded-lg p-2">
+          <div class="text-gray-500 mb-0.5">Mark</div>
+          <div class="text-white font-medium">$${p.mark_price.toFixed(2)}</div>
+        </div>
+        <div class="bg-gray-900/60 rounded-lg p-2">
+          <div class="text-gray-500 mb-0.5">Liq</div>
+          <div class="text-red-400 font-medium">${p.liq_price ? '$' + p.liq_price.toFixed(2) : '—'}</div>
+        </div>
+        <div class="bg-gray-900/60 rounded-lg p-2">
+          <div class="text-gray-500 mb-0.5">TP</div>
+          <div class="text-green-400 font-medium">${p.tp_price ? '$' + p.tp_price.toFixed(2) : '—'}</div>
+        </div>
+        <div class="bg-gray-900/60 rounded-lg p-2">
+          <div class="text-gray-500 mb-0.5">SL</div>
+          <div class="text-red-400 font-medium">${p.sl_price ? '$' + p.sl_price.toFixed(2) : '—'}</div>
+        </div>
+      </div>
+
+      <!-- Tombol aksi — full width di baris sendiri -->
+      <div class="flex gap-2 mt-3">
+        <button onclick="openTpSl('${p.symbol}', ${p.tp_price}, ${p.sl_price})"
+                class="flex-1 bg-yellow-700 hover:bg-yellow-600 text-yellow-100 py-2 rounded-lg text-sm font-medium">TP/SL</button>
+        <button onclick="closePos('${p.symbol}', '${p.side}', ${p.size})"
+                class="flex-1 bg-red-800 hover:bg-red-700 text-red-100 py-2 rounded-lg text-sm font-medium">Tutup</button>
+      </div>
+
+    </div>`;
+  }).join('');
+}
+
+async function closePos(symbol, side, size) {
+  if (!confirm(`Tutup posisi ${symbol} (${side === 'Buy' ? 'LONG' : 'SHORT'}, ${size})?`)) return;
+  const r = await fetch('/api/bybit/close', {
+    method: 'POST', credentials: 'same-origin',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({symbol, side, size}),
+  });
+  const d = await r.json();
+  if (d.retCode === 0) { alert('Posisi ditutup!'); loadBybit(); }
+  else alert('Error: ' + d.retMsg);
+}
+
+function openTpSl(symbol, tp, sl) {
+  document.getElementById('tpslSymbol').value = symbol;
+  document.getElementById('tpInput').value = tp || '';
+  document.getElementById('slInput').value = sl || '';
+  document.getElementById('tpslTitle').textContent = `TP / SL — ${symbol}`;
+  document.getElementById('tpslModal').classList.remove('hidden');
+}
+
+async function submitTpSl() {
+  const symbol = document.getElementById('tpslSymbol').value;
+  const tp = parseFloat(document.getElementById('tpInput').value) || 0;
+  const sl = parseFloat(document.getElementById('slInput').value) || 0;
+  const r = await fetch('/api/bybit/tp-sl', {
+    method: 'POST', credentials: 'same-origin',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({symbol, tp, sl}),
+  });
+  const d = await r.json();
+  document.getElementById('tpslModal').classList.add('hidden');
+  if (d.retCode === 0) { alert('TP/SL disimpan!'); loadBybit(); }
+  else alert('Error: ' + d.retMsg);
+}
+
+async function testOrder() {
+  if (!confirm('Buka 0.001 BTC lalu langsung tutup untuk test koneksi bot ke Bybit?')) return;
+  try {
+    const r = await fetch('/api/bybit/bot/force-trade', {method:'POST', credentials:'same-origin'});
+    const text = await r.text();
+    if (!text) { alert('❌ Server tidak merespons — coba lagi setelah Railway selesai deploy'); return; }
+    const d = JSON.parse(text);
+    if (d.status === 'ok') {
+      alert('✅ ' + d.message + '\nHarga: $' + d.mark_price);
+    } else {
+      alert('❌ Gagal: ' + (d.error || JSON.stringify(d)));
+    }
+    loadBybit();
+  } catch(e) {
+    alert('❌ Error: ' + e.message);
+  }
+}
+
+// Auto-refresh posisi Bybit setiap 5 detik
+loadBybit();
+setInterval(loadBybit, 5000);
+
+// P&L Chart
+async function loadChart() {
+  const data = await fetch('/api/pnl-chart').then(r => r.json());
+  if (!data.length) return;
+  const ctx = document.getElementById('pnlChart').getContext('2d');
+  new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: data.map(d => d.time ? new Date(d.time).toLocaleDateString('id') : ''),
+      datasets: [{
+        label: 'Cumulative P&L (USDC)',
+        data: data.map(d => d.pnl),
+        borderColor: '#facc15',
+        backgroundColor: 'rgba(250,204,21,0.08)',
+        fill: true,
+        tension: 0.3,
+        pointRadius: 2,
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { labels: { color: '#9ca3af' } } },
+      scales: {
+        x: { ticks: { color: '#6b7280' }, grid: { color: '#1f2937' } },
+        y: { ticks: { color: '#6b7280' }, grid: { color: '#1f2937' } }
+      }
+    }
+  });
+}
+loadChart();
+
+// Auto-refresh status tiap 30 detik
+setInterval(async () => {
+  const s = await fetch('/api/status').then(r => r.json());
+  // Update balance
+  document.querySelectorAll('[data-balance]').forEach(el => {
+    el.textContent = `$${s.balance.toFixed(2)}`;
+  });
+}, 30000);
+
+// ── Polymarket ─────────────────────────────────────────────────────────────
+async function loadPoly() {
+  const [marketsResp, posResp, balResp, histResp] = await Promise.all([
+    fetch('/api/polymarket/markets?limit=15', {credentials: 'same-origin'}),
+    fetch('/api/polymarket/positions', {credentials: 'same-origin'}),
+    fetch('/api/polymarket/balance', {credentials: 'same-origin'}),
+    fetch('/api/polymarket/history?limit=20', {credentials: 'same-origin'}),
+  ]);
+
+  const markets   = await marketsResp.json();
+  const positions = await posResp.json();
+  const bal       = await balResp.json();
+  const histData  = await histResp.json();
+
+  // Balance
+  if (bal && !bal.error) {
+    document.getElementById('polyBalanceLabel').textContent = `Balance: $${(bal.usdc || 0).toFixed(2)} USDC`;
+  }
+
+  // Positions
+  const posEl = document.getElementById('polyPositions');
+  const posList = Array.isArray(positions) ? positions : [];
+  if (posList.length) {
+    posEl.innerHTML = `
+      <h4 class="text-xs text-gray-500 mb-2 font-semibold uppercase tracking-wide">Posisi Aktif</h4>
+      ${posList.map(p => {
+        const pnlColor = p.pnl >= 0 ? 'text-green-400' : 'text-red-400';
+        return `
+        <div class="border border-gray-700 rounded-lg p-3 mb-2 bg-gray-800/40">
+          <p class="text-xs text-white font-medium mb-1">${p.market}</p>
+          <div class="flex justify-between text-xs">
+            <span class="${p.outcome === 'Yes' ? 'text-green-400' : 'text-red-400'} font-bold">${p.outcome}</span>
+            <span class="text-gray-400">${p.size.toFixed(2)} shares @ ${p.avg_price}%</span>
+            <span class="${pnlColor}">${p.pnl >= 0 ? '+' : ''}$${p.pnl.toFixed(2)}</span>
+          </div>
+        </div>`;
+      }).join('')}
+    `;
+  } else {
+    posEl.innerHTML = '';
+  }
+
+  // History
+  const histEl = document.getElementById('polyHistory');
+  const trades = Array.isArray(histData) ? histData : (histData.trades || []);
+  if (trades.length) {
+    histEl.innerHTML = `
+      <h4 class="text-xs text-gray-500 mb-2 font-semibold uppercase tracking-wide">Riwayat Transaksi</h4>
+      ${trades.slice(0,10).map(t => {
+        const side = (t.side || '').toUpperCase();
+        const sideColor = side === 'BUY' ? 'text-green-400' : 'text-red-400';
+        return `
+        <div class="border border-gray-700 rounded-lg p-2 mb-1 bg-gray-800/30">
+          <p class="text-[10px] text-white leading-tight mb-0.5">${(t.market || t.title || '-').substring(0,60)}</p>
+          <div class="flex justify-between text-[10px]">
+            <span class="${sideColor} font-bold">${side} ${t.outcome || ''}</span>
+            <span class="text-gray-400">${t.size ? parseFloat(t.size).toFixed(2)+' shares' : ''}</span>
+            <span class="text-gray-500">${t.price ? '@'+(parseFloat(t.price)*100).toFixed(1)+'%' : ''}</span>
+            <span class="text-gray-600">${(t.timestamp||t.created_at||'').substring(0,10)}</span>
+          </div>
+        </div>`;
+      }).join('')}
+    `;
+  } else {
+    histEl.innerHTML = '';
+  }
+
+  // Markets
+  const el = document.getElementById('polyMarkets');
+  const mList = Array.isArray(markets) ? markets : [];
+  if (!mList.length) {
+    el.innerHTML = '<p class="text-gray-600 text-sm">Tidak ada data market.</p>';
+    return;
+  }
+  el.innerHTML = mList.map(m => `
+    <div class="border border-gray-700 rounded-xl p-3 mb-3 bg-gray-800/40">
+      <p class="text-xs text-white font-medium mb-2 leading-tight">${m.question}</p>
+      <div class="flex items-center gap-2 mb-2 flex-wrap">
+        ${m.category ? `<span class="text-[10px] bg-gray-700 text-gray-300 px-2 py-0.5 rounded">${m.category}</span>` : ''}
+        ${m.end_date ? `<span class="text-[10px] text-gray-500">Ends ${m.end_date}</span>` : ''}
+        <span class="text-[10px] text-gray-500">Vol $${(m.volume_24h/1000).toFixed(0)}k/24h</span>
+      </div>
+      <div class="flex gap-2">
+        <button onclick="buyOutcome('${m.yes_token_id}', '${m.yes_label}', ${m.yes_price})"
+                class="flex-1 bg-green-800 hover:bg-green-700 text-green-100 py-2 rounded-lg text-sm font-bold">
+          ${m.yes_label} ${m.yes_price}%
+        </button>
+        <button onclick="buyOutcome('${m.no_token_id}', '${m.no_label}', ${m.no_price})"
+                class="flex-1 bg-red-800 hover:bg-red-700 text-red-100 py-2 rounded-lg text-sm font-bold">
+          ${m.no_label} ${m.no_price}%
+        </button>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function buyOutcome(tokenId, outcome, price) {
+  if (!tokenId) { alert('Token ID tidak tersedia untuk market ini'); return; }
+  const size = prompt(`Beli ${outcome} @ ${price}%\nMasukkan jumlah USDC (contoh: 10):`);
+  if (!size || isNaN(size)) return;
+  if (!confirm(`Beli ${outcome} sebesar $${size} USDC @ ${price}%?`)) return;
+  const r = await fetch('/api/polymarket/order', {
+    method: 'POST', credentials: 'same-origin',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({token_id: tokenId, side: 'buy', price, size: Number(size)}),
+  });
+  const d = await r.json();
+  if (d.error) alert('Error: ' + d.error);
+  else { alert('Order dikirim!'); loadPoly(); }
+}
+
+async function polyBotAction(action) {
+  const r = await fetch(`/api/polymarket/bot/${action}`, {method:'POST', credentials:'same-origin'});
+  const d = await r.json();
+  if (d.error) { alert(d.error); return; }
+  loadPolyBotStatus();
+}
+
+async function loadPolyBotStatus() {
+  const r = await fetch('/api/polymarket/bot/status', {credentials:'same-origin'});
+  const d = await r.json();
+  const el = document.getElementById('polyBotStatus');
+  if (d.is_running) {
+    el.innerHTML = `<span class="text-green-400 font-bold">● RUNNING</span> <span class="text-gray-500">scan tiap ${d.scan_interval}s</span>`;
+  } else {
+    el.innerHTML = `<span class="text-gray-500">● STOPPED</span>`;
+  }
+  const logEl = document.getElementById('polyLogs');
+  if (d.logs && d.logs.length > 0) {
+    logEl.classList.remove('hidden');
+    logEl.innerHTML = d.logs.map(l => `<div class="${l.includes('error') || l.includes('Error') ? 'text-red-400' : l.includes('Started') || l.includes('peluang') ? 'text-green-400' : 'text-gray-400'}">${l}</div>`).join('');
+    logEl.scrollTop = logEl.scrollHeight;
+  } else {
+    logEl.classList.add('hidden');
+  }
+}
+setInterval(loadPolyBotStatus, 5000);
+
+async function scanOpportunities() {
+  document.getElementById('polyOpportunities').innerHTML = '<p class="text-xs text-gray-500">Scanning...</p>';
+  const r = await fetch('/api/polymarket/bot/opportunities', {credentials:'same-origin'});
+  const d = await r.json();
+  const el = document.getElementById('polyOpportunities');
+  if (!d.opportunities || !d.opportunities.length) {
+    el.innerHTML = '<p class="text-xs text-gray-500">Tidak ada peluang ditemukan saat ini.</p>';
+    return;
+  }
+  el.innerHTML = d.opportunities.slice(0,5).map(o => `
+    <div class="border border-gray-700 rounded p-2 mb-1 bg-gray-900/50">
+      <div class="flex justify-between items-center">
+        <span class="text-[10px] text-yellow-400 font-bold uppercase">${o.strategy}</span>
+        <span class="text-[10px] text-green-400 font-bold">+${o.expected_profit_pct}%</span>
+      </div>
+      <p class="text-[10px] text-white leading-tight mt-0.5">${o.market.substring(0,60)}</p>
+      <p class="text-[10px] text-gray-500 mt-0.5">${o.reason}</p>
+      <p class="text-[10px] text-blue-400">${o.action} — YES:${(o.yes_price*100).toFixed(1)}% NO:${(o.no_price*100).toFixed(1)}%</p>
+    </div>
+  `).join('');
+}
+
+// Load Polymarket data on page load (panel always present, data loads regardless of active exchange)
+loadPoly();
+loadPolyBotStatus();
+</script>
+{% endblock %}

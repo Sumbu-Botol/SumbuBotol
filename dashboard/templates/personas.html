@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="flex items-center justify-between mb-6">
+  <div>
+    <h2 class="text-xl font-bold">🎭 Pilih Trading Persona</h2>
+    <p class="text-gray-500 text-sm mt-1">Setiap persona punya gaya trading berbeda. Pilih sesuai karakter kamu.</p>
+  </div>
+  {% if active_persona %}
+  <div class="text-right">
+    <p class="text-xs text-gray-500">Aktif sekarang</p>
+    <p class="text-lg font-bold" style="color: {{ active_persona.color }}">
+      {{ active_persona.emoji }} {{ active_persona.name }}
+    </p>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Persona grid -->
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+{% for p in personas %}
+<div class="bg-gray-900 border rounded-xl p-5 cursor-pointer transition-all hover:scale-105
+            {% if p.id == active_persona.id %}border-yellow-400 ring-1 ring-yellow-400{% else %}border-gray-800 hover:border-gray-600{% endif %}"
+     onclick="selectPersona('{{ p.id }}')">
+
+  <!-- Header -->
+  <div class="flex items-start justify-between mb-3">
+    <div>
+      <span class="text-3xl">{{ p.emoji }}</span>
+      <h3 class="font-bold text-white mt-1">{{ p.name }}</h3>
+      <p class="text-xs" style="color: {{ p.color }}">{{ p.title }}</p>
+    </div>
+    {% if p.id == active_persona.id %}
+    <span class="bg-yellow-400 text-black text-xs font-bold px-2 py-1 rounded-full">AKTIF</span>
+    {% endif %}
+  </div>
+
+  <!-- Style badge -->
+  <div class="mb-3">
+    <span class="text-xs bg-gray-800 text-gray-300 px-2 py-1 rounded-full">{{ p.style }}</span>
+  </div>
+
+  <!-- Description -->
+  <p class="text-gray-400 text-xs mb-4 leading-relaxed">{{ p.description }}</p>
+
+  <!-- Stats -->
+  <div class="grid grid-cols-3 gap-2 mb-4 text-center">
+    <div class="bg-gray-800 rounded-lg p-2">
+      <p class="text-xs text-gray-500">Leverage</p>
+      <p class="font-bold text-white text-sm">{{ p.leverage }}x</p>
+    </div>
+    <div class="bg-gray-800 rounded-lg p-2">
+      <p class="text-xs text-gray-500">Take Profit</p>
+      <p class="font-bold text-green-400 text-sm">{{ p.tp_pct }}%</p>
+    </div>
+    <div class="bg-gray-800 rounded-lg p-2">
+      <p class="text-xs text-gray-500">Stop Loss</p>
+      <p class="font-bold text-red-400 text-sm">{{ p.sl_pct }}%</p>
+    </div>
+  </div>
+
+  <!-- Risk level -->
+  <div class="mb-4">
+    <p class="text-xs text-gray-500 mb-1">Risk Level</p>
+    <div class="flex gap-1">
+      {% for i in range(5) %}
+      <div class="h-2 flex-1 rounded-full {% if i < p.risk_level %}bg-red-500{% else %}bg-gray-700{% endif %}"></div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Quote -->
+  <p class="text-xs text-gray-600 italic border-l-2 border-gray-700 pl-2">"{{ p.quote }}"</p>
+
+  <!-- Extra badges -->
+  <div class="flex gap-2 mt-3 flex-wrap">
+    <span class="text-xs bg-gray-800 text-gray-400 px-2 py-1 rounded">⏱ {{ p.timeframe }}</span>
+    {% if p.get('dca') %}<span class="text-xs bg-blue-900 text-blue-300 px-2 py-1 rounded">DCA</span>{% endif %}
+    {% if p.get('prefer_long') %}<span class="text-xs bg-green-900 text-green-300 px-2 py-1 rounded">LONG only</span>{% endif %}
+    {% if p.get('prefer_short') %}<span class="text-xs bg-red-900 text-red-300 px-2 py-1 rounded">SHORT bias</span>{% endif %}
+  </div>
+
+</div>
+{% endfor %}
+</div>
+
+<!-- Confirm modal -->
+<div id="confirmModal" class="hidden fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">
+  <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 max-w-sm w-full mx-4">
+    <h3 class="text-lg font-bold mb-2">Ganti Persona?</h3>
+    <p class="text-gray-400 text-sm mb-4" id="confirmText"></p>
+    <div class="flex gap-3">
+      <button onclick="confirmSwitch()"
+              class="flex-1 bg-yellow-400 text-black font-bold rounded-lg py-2 hover:bg-yellow-300">
+        Ya, Ganti
+      </button>
+      <button onclick="closeModal()"
+              class="flex-1 bg-gray-800 text-gray-300 rounded-lg py-2 hover:bg-gray-700">
+        Batal
+      </button>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+let pendingPersonaId = null;
+
+const personaNames = {{ persona_names_json|safe }};
+
+function selectPersona(id) {
+  pendingPersonaId = id;
+  document.getElementById('confirmText').textContent =
+    `Ganti ke "${personaNames[id]}"? Bot akan restart dengan strategi baru.`;
+  document.getElementById('confirmModal').classList.remove('hidden');
+}
+
+function closeModal() {
+  document.getElementById('confirmModal').classList.add('hidden');
+  pendingPersonaId = null;
+}
+
+async function confirmSwitch() {
+  const id = pendingPersonaId;
+  closeModal();
+  const btn = document.querySelector('[onclick="confirmSwitch()"]');
+  try {
+    const res = await fetch('/api/persona/switch', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({persona_id: id})
+    });
+    if (res.ok) {
+      location.reload();
+    } else {
+      const err = await res.json().catch(() => ({}));
+      alert('Gagal ganti persona: ' + (err.detail || res.status));
+    }
+  } catch(e) {
+    alert('Error: ' + e.message);
+  }
+}
+</script>
+{% endblock %}
