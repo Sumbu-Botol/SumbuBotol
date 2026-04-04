@@ -1,6 +1,7 @@
 """
-Karung Detector — ONNX Runtime (tanpa PyTorch)
-Menggunakan YOLOv8n.onnx (~6MB) + onnxruntime-cpu (~50MB).
+Karung Detector — OpenCV DNN (tanpa library ML eksternal)
+Menggunakan cv2.dnn untuk inference YOLOv8n ONNX.
+Tidak butuh onnxruntime, torch, atau ultralytics.
 """
 
 import cv2
@@ -10,9 +11,9 @@ import urllib.request
 from dataclasses import dataclass
 
 ONNX_MODEL_URL = "https://github.com/ultralytics/assets/releases/download/v0.0.0/yolov8n.onnx"
-DEFAULT_MODEL_PATH = "yolov8n.onnx"
+DEFAULT_MODEL_PATH = os.path.join(os.path.dirname(__file__), "yolov8n.onnx")
 
-# Kelas COCO yang mirip karung (proxy sampai model custom tersedia)
+# Kelas COCO proxy untuk karung
 TARGET_CLASSES = {24, 26, 28}  # backpack, handbag, suitcase
 INPUT_SIZE = 640
 
@@ -27,25 +28,35 @@ class DetectionResult:
 
 class SackDetector:
     def __init__(self, model_path=DEFAULT_MODEL_PATH, confidence_threshold=0.40):
-        import onnxruntime as ort
+        self.confidence_threshold = confidence_threshold
 
         if not os.path.exists(model_path):
-            print(f"[detector] Download model dari {ONNX_MODEL_URL} ...")
+            print(f"[detector] Downloading model...")
             urllib.request.urlretrieve(ONNX_MODEL_URL, model_path)
             print("[detector] Download selesai.")
 
-        self.session = ort.InferenceSession(
-            model_path, providers=["CPUExecutionProvider"]
-        )
-        self.input_name = self.session.get_inputs()[0].name
-        self.confidence_threshold = confidence_threshold
+        self.net = cv2.dnn.readNetFromONNX(model_path)
+        self.net.setPreferableBackend(cv2.dnn.DNN_BACKEND_OPENCV)
+        self.net.setPreferableTarget(cv2.dnn.DNN_TARGET_CPU)
+        print("[detector] Model siap.")
 
     def detect_image(self, image: np.ndarray) -> DetectionResult:
         orig_h, orig_w = image.shape[:2]
-        blob, scale, pad_x, pad_y = self._preprocess(image)
 
-        output = self.session.run(None, {self.input_name: blob})
-        boxes, confs = self._postprocess(output, orig_w, orig_h, scale, pad_x, pad_y)
+        # Letterbox resize
+        img_resized, scale, pad_x, pad_y = self._letterbox(image)
+
+        # Buat blob
+        blob = cv2.dnn.blobFromImage(
+            img_resized, 1 / 255.0, (INPUT_SIZE, INPUT_SIZE),
+            swapRB=True, crop=False
+        )
+        self.net.setInput(blob)
+        outputs = self.net.forward()  # shape: [1, 84, 8400]
+
+        boxes, confs = self._postprocess(
+            outputs, orig_w, orig_h, scale, pad_x, pad_y
+        )
 
         annotated = image.copy()
         for i, (x1, y1, x2, y2) in enumerate(boxes):
@@ -103,30 +114,24 @@ class SackDetector:
             "min_count": min(counts),
         }
 
-    def _preprocess(self, image):
+    def _letterbox(self, image):
         h, w = image.shape[:2]
         scale = min(INPUT_SIZE / w, INPUT_SIZE / h)
         new_w, new_h = int(w * scale), int(h * scale)
         resized = cv2.resize(image, (new_w, new_h))
-
         padded = np.full((INPUT_SIZE, INPUT_SIZE, 3), 114, dtype=np.uint8)
         pad_x = (INPUT_SIZE - new_w) // 2
         pad_y = (INPUT_SIZE - new_h) // 2
         padded[pad_y:pad_y + new_h, pad_x:pad_x + new_w] = resized
+        return padded, scale, pad_x, pad_y
 
-        blob = padded[:, :, ::-1].transpose(2, 0, 1).astype(np.float32) / 255.0
-        return blob[np.newaxis], scale, pad_x, pad_y
-
-    def _postprocess(self, output, orig_w, orig_h, scale, pad_x, pad_y):
-        preds = output[0][0].T  # [8400, 84]
+    def _postprocess(self, outputs, orig_w, orig_h, scale, pad_x, pad_y):
+        preds = outputs[0].T  # [8400, 84]
         scores = preds[:, 4:]
         class_ids = np.argmax(scores, axis=1)
         confidences = np.max(scores, axis=1)
 
-        mask = (
-            np.isin(class_ids, list(TARGET_CLASSES))
-            & (confidences >= self.confidence_threshold)
-        )
+        mask = np.isin(class_ids, list(TARGET_CLASSES)) & (confidences >= self.confidence_threshold)
         preds_f = preds[mask]
         confs_f = confidences[mask]
 
@@ -141,6 +146,7 @@ class SackDetector:
 
         nms_boxes = [[int(x1[i]), int(y1[i]), int(x2[i] - x1[i]), int(y2[i] - y1[i])] for i in range(len(x1))]
         indices = cv2.dnn.NMSBoxes(nms_boxes, confs_f.tolist(), self.confidence_threshold, 0.45)
+
         if len(indices) == 0:
             return [], []
 
