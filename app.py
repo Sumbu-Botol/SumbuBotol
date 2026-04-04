@@ -13,7 +13,11 @@ import os
 import uuid
 import shutil
 import asyncio
+import logging
 from pathlib import Path
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 from fastapi import FastAPI, File, UploadFile, HTTPException, BackgroundTasks
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
@@ -27,14 +31,21 @@ RESULT_DIR = BASE_DIR / "results"
 UPLOAD_DIR.mkdir(exist_ok=True)
 RESULT_DIR.mkdir(exist_ok=True)
 
+logger.info("Starting Sack Counter app...")
+logger.info(f"BASE_DIR={BASE_DIR}, UPLOAD_DIR={UPLOAD_DIR}, RESULT_DIR={RESULT_DIR}")
+
 app = FastAPI(
     title="Sack Counting Detection",
     description="API untuk mendeteksi dan menghitung karung dari foto/video menggunakan YOLOv8",
     version="1.0.0",
 )
 
-app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
-templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
+static_dir = BASE_DIR / "static"
+templates_dir = BASE_DIR / "templates"
+logger.info(f"static_dir exists={static_dir.exists()}, templates_dir exists={templates_dir.exists()}")
+
+app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+templates = Jinja2Templates(directory=str(templates_dir))
 
 # Lazy-load detector
 _detector = None
@@ -219,4 +230,5 @@ async def get_result(filename: str, background_tasks: BackgroundTasks):
 if __name__ == "__main__":
     import uvicorn
     port = int(os.getenv("PORT", 8000))
-    uvicorn.run("app:app", host="0.0.0.0", port=port)
+    logger.info(f"Starting uvicorn on port {port}")
+    uvicorn.run("app:app", host="0.0.0.0", port=port, log_level="info")
